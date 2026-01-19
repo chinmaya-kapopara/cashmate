@@ -10,8 +10,13 @@ export const metadata: Metadata = {
   description: "Centralized app to track shared family balance - add income and expenses, see who added each transaction",
   manifest: "/manifest.json",
   icons: {
-    icon: "/cashmate_wallet_logo.png",
-    apple: "/cashmate_wallet_logo.png",
+    icon: [
+      { url: "/cashmate_wallet_logo.png", sizes: "192x192", type: "image/png" },
+      { url: "/cashmate_wallet_logo.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      { url: "/cashmate_wallet_logo.png", sizes: "180x180", type: "image/png" },
+    ],
   },
   appleWebApp: {
     capable: true,

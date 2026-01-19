@@ -13,6 +13,24 @@ export default function manifest(): MetadataRoute.Manifest {
     icons: [
       {
         src: "/cashmate_wallet_logo.png",
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: "/cashmate_wallet_logo.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: "/cashmate_wallet_logo.png",
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "maskable",
+      },
+      {
+        src: "/cashmate_wallet_logo.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",

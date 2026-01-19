@@ -417,6 +417,42 @@ export default function Home() {
     }
   }, [selectedBookId]);
 
+  // Helper function to format activity notification message
+  const formatActivityNotification = (activity: any): string => {
+    const userName = activity.user_name || activity.user_email?.split('@')[0] || 'Someone';
+    const formattedName = userName.split(' ').map((n: string) => n.charAt(0).toUpperCase() + n.slice(1)).join(' ');
+    
+    // Format based on activity type
+    switch (activity.activity_type) {
+      case 'transaction_added':
+        return `${formattedName} added a transaction`;
+      case 'transaction_updated':
+        return `${formattedName} updated a transaction`;
+      case 'transaction_deleted':
+        return `${formattedName} deleted a transaction`;
+      case 'member_added':
+        return `${formattedName} added a member`;
+      case 'member_removed':
+        return `${formattedName} removed a member`;
+      case 'member_role_changed':
+        return `${formattedName} changed a member's role`;
+      case 'party_added':
+        return `${formattedName} added a party`;
+      case 'party_updated':
+        return `${formattedName} updated a party`;
+      case 'party_deleted':
+        return `${formattedName} deleted a party`;
+      case 'book_created':
+        return `${formattedName} created a book`;
+      case 'book_updated':
+        return `${formattedName} updated the book`;
+      case 'book_deleted':
+        return `${formattedName} deleted a book`;
+      default:
+        return `${formattedName}: ${activity.description}`;
+    }
+  };
+
   // Helper function to check if error is a permission/RLS error
   const isPermissionError = (error: any): boolean => {
     if (!error) return false;
@@ -1648,6 +1684,78 @@ export default function Home() {
     selectedBookIdRef.current = selectedBookId;
   }, [selectedBookId]);
 
+  // Store user email in a ref for activity notifications
+  const userEmailRef = useRef(user?.email);
+  useEffect(() => {
+    userEmailRef.current = user?.email;
+  }, [user?.email]);
+
+  // Subscribe to realtime activity_log changes to show notifications
+  useEffect(() => {
+    if (!selectedBookId || !user?.email) return;
+
+    const channel = supabase
+      .channel(`activity_log:${selectedBookId}`, {
+        config: {
+          broadcast: { self: true },
+        },
+      })
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT', // Only listen to new activities
+          schema: 'public',
+          table: 'activity_log',
+          filter: `book_id=eq.${selectedBookId}`,
+        },
+        (payload) => {
+          const newActivity = (payload as any).new_record;
+          if (!newActivity) return;
+          
+          // Don't show notification for current user's own activities
+          if (newActivity.user_email === userEmailRef.current) {
+            return;
+          }
+
+          // Format and show notification
+          const notificationMessage = formatActivityNotification(newActivity);
+          
+          // Show notification with activity icon
+          toast.info(notificationMessage, {
+            icon: <Activity className="h-4 w-4" />,
+            duration: 4000,
+            action: {
+              label: 'View',
+              onClick: () => {
+                setIsActivityModalOpen(true);
+                fetchActivities();
+              },
+            },
+          });
+
+          // Refresh activities list
+          fetchActivities();
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Subscribed to activity log changes for book:', selectedBookId);
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('Error subscribing to activity log changes:', err);
+          // Don't show error to user - realtime is optional
+        } else if (status === 'TIMED_OUT') {
+          console.warn('Activity log subscription timed out for book:', selectedBookId);
+        } else if (status === 'CLOSED') {
+          console.log('Activity log subscription closed for book:', selectedBookId);
+        }
+      });
+
+    // Cleanup subscription when book changes or component unmounts
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedBookId, user?.email, fetchActivities]);
+
   // Subscribe to realtime book_members changes to refresh UI when role changes
   useEffect(() => {
     if (!user?.email) return;
@@ -1928,6 +2036,17 @@ export default function Home() {
   // Attach pull-to-refresh handlers to window
   useEffect(() => {
     const handleTouchStart = (e: TouchEvent) => {
+      // Check if any modal is open - if so, disable pull-to-refresh
+      const hasOpenModal = isDialogOpen || isEditDialogOpen || isMembersModalOpen || 
+                          isActivityModalOpen || isProfileOpen || isSettingsModalOpen ||
+                          isAddMemberModalOpen || isEditRoleModalOpen || isHistoryDialogOpen ||
+                          isBookDialogOpen || isDeleteConfirmOpen || isRenameBookDialogOpen ||
+                          isDeleteBookConfirmOpen || isBookSelectorOpen || isDateFilterOpen ||
+                          isAddPartyDialogOpen || isRenamePartyDialogOpen || isDeletePartyConfirmOpen ||
+                          isPartySelectorOpen || isDeleteMemberConfirmOpen;
+      
+      if (hasOpenModal) return; // Don't allow pull-to-refresh when any modal is open
+      
       const currentScrollTop = window.scrollY || document.documentElement.scrollTop;
       scrollTop.current = currentScrollTop;
       if (scrollTop.current === 0) {
@@ -1936,6 +2055,24 @@ export default function Home() {
     };
 
     const handleTouchMove = (e: TouchEvent) => {
+      // Check if any modal is open - if so, disable pull-to-refresh
+      const hasOpenModal = isDialogOpen || isEditDialogOpen || isMembersModalOpen || 
+                          isActivityModalOpen || isProfileOpen || isSettingsModalOpen ||
+                          isAddMemberModalOpen || isEditRoleModalOpen || isHistoryDialogOpen ||
+                          isBookDialogOpen || isDeleteConfirmOpen || isRenameBookDialogOpen ||
+                          isDeleteBookConfirmOpen || isBookSelectorOpen || isDateFilterOpen ||
+                          isAddPartyDialogOpen || isRenamePartyDialogOpen || isDeletePartyConfirmOpen ||
+                          isPartySelectorOpen || isDeleteMemberConfirmOpen;
+      
+      if (hasOpenModal) {
+        // Reset any pull state if modal is open
+        pullDistanceRef.current = 0;
+        setPullDistance(0);
+        setIsPulling(false);
+        touchStartY.current = null;
+        return;
+      }
+      
       if (touchStartY.current === null) return;
       
       const currentScrollTop = window.scrollY || document.documentElement.scrollTop;
@@ -1944,10 +2081,13 @@ export default function Home() {
       
       if (currentScrollTop === 0 && deltaY > 0) {
         setIsPulling(true);
-        const distance = Math.min(deltaY * 0.5, 80); // Max pull distance of 80px
+        const distance = Math.min(deltaY * 0.5, 120); // Max pull distance of 120px
         pullDistanceRef.current = distance;
         setPullDistance(distance);
-        e.preventDefault(); // Prevent default scroll behavior
+        // Only prevent default if we've pulled significantly (more than 30px)
+        if (distance > 30) {
+          e.preventDefault(); // Prevent default scroll behavior
+        }
       } else if (deltaY <= 0 || currentScrollTop > 0) {
         // Reset if scrolling up or not at top
         pullDistanceRef.current = 0;
@@ -1958,9 +2098,27 @@ export default function Home() {
     };
 
     const handleTouchEnd = async () => {
+      // Check if any modal is open - if so, disable pull-to-refresh
+      const hasOpenModal = isDialogOpen || isEditDialogOpen || isMembersModalOpen || 
+                          isActivityModalOpen || isProfileOpen || isSettingsModalOpen ||
+                          isAddMemberModalOpen || isEditRoleModalOpen || isHistoryDialogOpen ||
+                          isBookDialogOpen || isDeleteConfirmOpen || isRenameBookDialogOpen ||
+                          isDeleteBookConfirmOpen || isBookSelectorOpen || isDateFilterOpen ||
+                          isAddPartyDialogOpen || isRenamePartyDialogOpen || isDeletePartyConfirmOpen ||
+                          isPartySelectorOpen || isDeleteMemberConfirmOpen;
+      
+      if (hasOpenModal) {
+        // Reset any pull state if modal is open
+        pullDistanceRef.current = 0;
+        setPullDistance(0);
+        setIsPulling(false);
+        touchStartY.current = null;
+        return;
+      }
+      
       if (touchStartY.current === null) return;
       
-      if (pullDistanceRef.current > 50 && !isRefreshingRef.current) {
+      if (pullDistanceRef.current > 100 && !isRefreshingRef.current) {
         // Trigger refresh
         isRefreshingRef.current = true;
         setIsRefreshing(true);
@@ -1987,7 +2145,158 @@ export default function Home() {
       window.removeEventListener('touchmove', handleTouchMove);
       window.removeEventListener('touchend', handleTouchEnd);
     };
-  }, []); // Empty dependency array - handlers use refs to access latest functions
+  }, [
+    isDialogOpen, isEditDialogOpen, isMembersModalOpen, isActivityModalOpen, isProfileOpen,
+    isSettingsModalOpen, isAddMemberModalOpen, isEditRoleModalOpen, isHistoryDialogOpen,
+    isBookDialogOpen, isDeleteConfirmOpen, isRenameBookDialogOpen, isDeleteBookConfirmOpen,
+    isBookSelectorOpen, isDateFilterOpen, isAddPartyDialogOpen, isRenamePartyDialogOpen,
+    isDeletePartyConfirmOpen, isPartySelectorOpen, isDeleteMemberConfirmOpen
+  ]);
+
+  // Browser history management for back button navigation
+  useEffect(() => {
+    // Handle browser back button
+    const handlePopState = (e: PopStateEvent) => {
+      // Close modals in reverse order of opening (most recent first)
+      if (isHistoryDialogOpen) {
+        setIsHistoryDialogOpen(false);
+        return;
+      }
+      if (isDeleteMemberConfirmOpen) {
+        setIsDeleteMemberConfirmOpen(false);
+        return;
+      }
+      if (isDeleteBookConfirmOpen) {
+        setIsDeleteBookConfirmOpen(false);
+        return;
+      }
+      if (isDeleteConfirmOpen) {
+        setIsDeleteConfirmOpen(false);
+        return;
+      }
+      if (isEditDialogOpen) {
+        setIsEditDialogOpen(false);
+        return;
+      }
+      if (isDialogOpen) {
+        setIsDialogOpen(false);
+        return;
+      }
+      if (isEditRoleModalOpen) {
+        setIsEditRoleModalOpen(false);
+        return;
+      }
+      if (isAddMemberModalOpen) {
+        setIsAddMemberModalOpen(false);
+        return;
+      }
+      if (isPartySelectorOpen) {
+        setIsPartySelectorOpen(false);
+        return;
+      }
+      if (isDateFilterOpen) {
+        setIsDateFilterOpen(false);
+        return;
+      }
+      if (isBookDialogOpen) {
+        setIsBookDialogOpen(false);
+        return;
+      }
+      if (isRenameBookDialogOpen) {
+        setIsRenameBookDialogOpen(false);
+        return;
+      }
+      if (isActivityModalOpen) {
+        setIsActivityModalOpen(false);
+        return;
+      }
+      if (isMembersModalOpen) {
+        setIsMembersModalOpen(false);
+        return;
+      }
+      if (isProfileOpen) {
+        setIsProfileOpen(false);
+        return;
+      }
+      if (isSettingsModalOpen) {
+        setIsSettingsModalOpen(false);
+        return;
+      }
+      if (activeTab === 'reports') {
+        setActiveTab('home');
+        return;
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [
+    isHistoryDialogOpen, isDeleteMemberConfirmOpen, isDeleteBookConfirmOpen, isDeleteConfirmOpen,
+    isEditDialogOpen, isDialogOpen, isEditRoleModalOpen, isAddMemberModalOpen, isPartySelectorOpen,
+    isDateFilterOpen, isBookDialogOpen, isRenameBookDialogOpen, isActivityModalOpen,
+    isMembersModalOpen, isProfileOpen, isSettingsModalOpen, activeTab
+  ]);
+
+  // Push to history when modals open or tab changes
+  useEffect(() => {
+    const hasOpenModal = isHistoryDialogOpen || isDeleteMemberConfirmOpen || isDeleteBookConfirmOpen ||
+      isDeleteConfirmOpen || isEditDialogOpen || isDialogOpen || isEditRoleModalOpen ||
+      isAddMemberModalOpen || isPartySelectorOpen || isDateFilterOpen || isBookDialogOpen ||
+      isRenameBookDialogOpen || isActivityModalOpen || isMembersModalOpen || isProfileOpen ||
+      isSettingsModalOpen || activeTab === 'reports';
+
+    if (hasOpenModal) {
+      const state = { 
+        timestamp: Date.now(),
+        tab: activeTab
+      };
+      window.history.pushState(state, '', window.location.href);
+    }
+  }, [
+    isHistoryDialogOpen, isDeleteMemberConfirmOpen, isDeleteBookConfirmOpen, isDeleteConfirmOpen,
+    isEditDialogOpen, isDialogOpen, isEditRoleModalOpen, isAddMemberModalOpen, isPartySelectorOpen,
+    isDateFilterOpen, isBookDialogOpen, isRenameBookDialogOpen, isActivityModalOpen,
+    isMembersModalOpen, isProfileOpen, isSettingsModalOpen, activeTab
+  ]);
+
+  // Prevent body scroll when any modal is open
+  useEffect(() => {
+    const hasOpenModal = isDialogOpen || isEditDialogOpen || isMembersModalOpen || 
+                        isActivityModalOpen || isProfileOpen || isSettingsModalOpen ||
+                        isAddMemberModalOpen || isEditRoleModalOpen || isHistoryDialogOpen ||
+                        isBookDialogOpen || isDeleteConfirmOpen || isRenameBookDialogOpen ||
+                        isDeleteBookConfirmOpen || isBookSelectorOpen || isDateFilterOpen ||
+                        isAddPartyDialogOpen || isRenamePartyDialogOpen || isDeletePartyConfirmOpen ||
+                        isPartySelectorOpen || isDeleteMemberConfirmOpen;
+    
+    if (hasOpenModal) {
+      // Save current scroll position
+      const scrollY = window.scrollY;
+      // Prevent body scroll
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = '100%';
+      document.body.style.overflow = 'hidden';
+      
+      return () => {
+        // Restore body scroll
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.width = '';
+        document.body.style.overflow = '';
+        // Restore scroll position
+        window.scrollTo(0, scrollY);
+      };
+    }
+  }, [
+    isDialogOpen, isEditDialogOpen, isMembersModalOpen, isActivityModalOpen, isProfileOpen,
+    isSettingsModalOpen, isAddMemberModalOpen, isEditRoleModalOpen, isHistoryDialogOpen,
+    isBookDialogOpen, isDeleteConfirmOpen, isRenameBookDialogOpen, isDeleteBookConfirmOpen,
+    isBookSelectorOpen, isDateFilterOpen, isAddPartyDialogOpen, isRenamePartyDialogOpen,
+    isDeletePartyConfirmOpen, isPartySelectorOpen, isDeleteMemberConfirmOpen
+  ]);
 
   // Fetch book members when book changes (needed for member filter)
   useEffect(() => {
@@ -3413,7 +3722,7 @@ export default function Home() {
                       onClick={handleOpenBookSelector}
                       className="flex items-center gap-1.5 px-0 py-2 hover:opacity-70 transition-opacity"
                     >
-                      <span className="font-semibold text-lg truncate">{selectedBook?.name || "Select a book"}</span>
+                      <span className="font-semibold text-sm truncate">{selectedBook?.name || "Select a book"}</span>
                       <ChevronDown className="h-5 w-5 flex-shrink-0" />
                     </button>
                   )}
@@ -3489,9 +3798,9 @@ export default function Home() {
                 <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent"></div>
               ) : (
                 <div className="flex flex-col items-center">
-                  <ArrowDown className={`h-5 w-5 text-muted-foreground transition-transform ${pullDistance > 50 ? 'rotate-180' : ''}`} />
+                  <ArrowDown className={`h-5 w-5 text-muted-foreground transition-transform ${pullDistance > 100 ? 'rotate-180' : ''}`} />
                   <span className="text-xs text-muted-foreground mt-1">
-                    {pullDistance > 50 ? 'Release to refresh' : 'Pull to refresh'}
+                    {pullDistance > 100 ? 'Release to refresh' : 'Pull to refresh'}
                   </span>
                 </div>
               )}
@@ -3508,7 +3817,7 @@ export default function Home() {
                   <div className="mb-6">
                     <span className="text-8xl">📚</span>
                   </div>
-                  <h2 className="text-2xl font-bold mb-3">Create Your First Book</h2>
+                  <h2 className="text-lg font-bold mb-3">Create Your First Book</h2>
                   <p className="text-muted-foreground mb-6">
                     Get started by creating a book to organize your transactions and manage expenses.
                   </p>
@@ -3516,7 +3825,7 @@ export default function Home() {
                     onClick={() => {
                       setIsBookDialogOpen(true);
                     }}
-                    className="bg-gradient-to-r from-primary to-secondary text-primary-foreground font-semibold py-6 px-8 rounded-lg text-lg hover:opacity-90 transition-opacity shadow-lg flex items-center justify-center gap-2 mx-auto"
+                    className="bg-gradient-to-r from-primary to-secondary text-primary-foreground font-semibold py-6 px-8 rounded-lg text-sm hover:opacity-90 transition-opacity shadow-lg flex items-center justify-center gap-2 mx-auto"
                   >
                     <Plus className="h-5 w-5" />
                     Create Your First Book
@@ -3526,7 +3835,7 @@ export default function Home() {
             ) : books.length > 0 ? (
               <>
         {/* Header with Blue Gradient Background */}
-        <header className="bg-gradient-to-r from-primary to-secondary text-primary-foreground rounded-xl mb-6 safe-area-top w-full shadow-2xl mt-4" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
+        <header className="bg-gradient-to-r from-primary to-secondary text-primary-foreground rounded-xl mb-6 safe-area-top w-full shadow-2xl mt-4" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))", boxShadow: "0 0 20px rgba(0, 0, 0, 0.15)" }}>
           <div className="px-5 pt-2 pb-5">
             {/* Balance Card */}
             <div>
@@ -3559,12 +3868,9 @@ export default function Home() {
                   <div className="flex items-start justify-between mb-3 gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="mb-1.5">
-                        <span className="text-sm font-medium opacity-90 tracking-wide uppercase">Total Balance</span>
+                        <span className="text-xs font-medium opacity-90 tracking-wide uppercase">Total Balance</span>
                       </div>
-                      <div className="text-3xl font-bold tracking-tight truncate">₹ {formatIndianNumber(totalBalance)}</div>
-                    </div>
-                    <div className="flex items-center justify-center -mr-4 flex-shrink-0">
-                      <span className="text-6xl">💰</span>
+                      <div className="text-xl font-bold tracking-tight truncate">₹ {formatIndianNumber(totalBalance)}</div>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -3573,14 +3879,14 @@ export default function Home() {
                         <p className="text-xs opacity-80 font-medium">INCOME</p>
                         <ArrowUp className="h-4 w-4 text-white flex-shrink-0" />
                       </div>
-                      <p className="text-lg font-bold text-green-300 truncate">₹ {formatIndianNumber(totalIncome)}</p>
+                      <p className="text-sm font-bold text-green-300 truncate">₹ {formatIndianNumber(totalIncome)}</p>
                     </div>
                     <div className="bg-white/10 backdrop-blur-sm rounded-lg px-3 pt-3 pb-2 ring-1 ring-white/10 hover:bg-white/15 transition-colors min-w-0">
                       <div className="flex items-center justify-between gap-2.5 mb-0.5">
                         <p className="text-xs opacity-80 font-medium">EXPENSE</p>
                         <ArrowDown className="h-4 w-4 text-white flex-shrink-0" />
                       </div>
-                      <p className="text-lg font-bold text-red-300 truncate">₹ {formatIndianNumber(totalExpenses)}</p>
+                      <p className="text-sm font-bold text-red-300 truncate">₹ {formatIndianNumber(totalExpenses)}</p>
                     </div>
                   </div>
                 </>
@@ -3840,7 +4146,7 @@ export default function Home() {
                     return (
                       <>
                         <div className="text-6xl mb-4 opacity-50">🔍</div>
-                        <h3 className="text-lg font-semibold mb-2">No transactions found</h3>
+                        <h3 className="text-sm font-semibold mb-2">No transactions found</h3>
                         <p className="text-sm text-muted-foreground">
                           Try adjusting your filter or search query
                         </p>
@@ -3850,7 +4156,7 @@ export default function Home() {
                     return (
                       <>
                         <div className="text-6xl mb-4 opacity-50">➕</div>
-                        <h3 className="text-lg font-semibold mb-2">No transactions yet</h3>
+                        <h3 className="text-sm font-semibold mb-2">No transactions yet</h3>
                         <p className="text-sm text-muted-foreground">
                           Tap the ➕ button to add your first transaction
                         </p>
@@ -3887,24 +4193,24 @@ export default function Home() {
                         }
                       }}
                     >
-                      <CardContent className="p-2.5">
+                      <CardContent className="p-2">
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
                             {(() => {
                               const { icon: Icon, arrowColor, bgColor } = getTransactionTypeIcon(transaction.type);
                               return (
-                                <div className={`h-12 w-12 rounded-lg ${bgColor} flex items-center justify-center flex-shrink-0`}>
-                                  <Icon className={`h-6 w-6 ${arrowColor}`} />
+                                <div className={`h-8 w-8 rounded-lg ${bgColor} flex items-center justify-center flex-shrink-0`}>
+                                  <Icon className={`h-4 w-4 ${arrowColor}`} />
                                 </div>
                               );
                             })()}
                             <div className="flex-1 min-w-0 overflow-hidden">
-                              <p className="font-semibold truncate">{transaction.name}</p>
-                              <p className="text-sm text-muted-foreground truncate">{transaction.addedBy}</p>
+                              <p className="text-sm font-semibold truncate">{transaction.name}</p>
+                              <p className="text-xs text-muted-foreground truncate">{transaction.addedBy}</p>
                             </div>
                           </div>
                            <div className="text-right">
-                             <div className={`text-base font-bold ${transaction.type === "income" ? "text-green-600" : "text-red-600"}`}>
+                             <div className={`text-sm font-bold ${transaction.type === "income" ? "text-green-600" : "text-red-600"}`}>
                                {transaction.type === "income" ? "+" : "-"} ₹{formatIndianNumber(transaction.amount)}
                              </div>
                             <div className="text-xs text-muted-foreground mt-1">
@@ -3931,7 +4237,7 @@ export default function Home() {
           <div className="flex items-center justify-center min-h-[60vh]">
             <div className="text-center">
               <BarChart3 className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-              <h2 className="text-xl font-semibold mb-2">Reports</h2>
+              <h2 className="text-base font-semibold mb-2">Reports</h2>
               <p className="text-muted-foreground">Coming soon</p>
             </div>
           </div>
@@ -3950,7 +4256,11 @@ export default function Home() {
             setProfileData(originalProfileData);
           }
         }}>
-          <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogContent 
+            className="max-h-[85vh] overflow-y-auto overflow-x-hidden"
+            onWheel={(e) => e.stopPropagation()}
+            onScroll={(e) => e.stopPropagation()}
+          >
             <DialogHeader>
               <DialogTitle>Profile</DialogTitle>
               <DialogDescription className="sr-only">Manage your profile information</DialogDescription>
@@ -3961,11 +4271,11 @@ export default function Home() {
               {/* Profile Avatar Section */}
               <div className="flex flex-col items-center py-4">
                 <div className={`h-20 w-20 rounded-full bg-gradient-to-r ${getGradientFromEmail(profileData.email)} flex items-center justify-center mb-3`}>
-                  <span className="text-2xl font-semibold text-white">
+                  <span className="text-lg font-semibold text-white">
                     {getInitials(profileData.name)}
                   </span>
                 </div>
-                <h2 className="text-lg font-semibold mb-1">{profileData.name}</h2>
+                <h2 className="text-sm font-semibold mb-1">{profileData.name}</h2>
                 <p className="text-sm text-muted-foreground">{profileData.email}</p>
               </div>
 
@@ -3976,7 +4286,7 @@ export default function Home() {
                     <div className="space-y-4 p-4">
                       {/* Name Field */}
                       <div className="flex flex-col gap-2">
-                        <Label htmlFor="profileName" className="text-foreground text-sm font-medium">Name</Label>
+                        <Label htmlFor="profileName" className="text-foreground text-xs font-medium">Name</Label>
                         <div className="relative">
                           <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-foreground" />
                           <Input
@@ -4018,7 +4328,7 @@ export default function Home() {
 
                       {/* Email Field */}
                       <div className="flex flex-col gap-2">
-                        <Label htmlFor="profileEmail" className="text-foreground text-sm font-medium">Email</Label>
+                        <Label htmlFor="profileEmail" className="text-foreground text-xs font-medium">Email</Label>
                         <div className="relative">
                           <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-foreground" />
                           <Input
@@ -4226,7 +4536,11 @@ export default function Home() {
 
       {/* Settings Modal */}
       <Dialog open={isSettingsModalOpen} onOpenChange={setIsSettingsModalOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogContent 
+          className="max-h-[85vh] overflow-y-auto overflow-x-hidden"
+          onWheel={(e) => e.stopPropagation()}
+          onScroll={(e) => e.stopPropagation()}
+        >
           <DialogHeader>
             <DialogTitle>Settings</DialogTitle>
             <DialogDescription className="sr-only">Manage your settings</DialogDescription>
@@ -4235,7 +4549,7 @@ export default function Home() {
           <div className="space-y-4 py-4">
             {/* Account Section */}
             <div>
-              <h2 className="text-lg font-semibold mb-3 px-1">Account</h2>
+              <h2 className="text-sm font-semibold mb-3 px-1">Account</h2>
               <Card className="border border-border">
                 <CardContent className="p-0">
                   <button 
@@ -4265,7 +4579,7 @@ export default function Home() {
 
             {/* About Section */}
             <div>
-              <h2 className="text-lg font-semibold mb-3 px-1">About</h2>
+              <h2 className="text-sm font-semibold mb-3 px-1">About</h2>
               <Card className="border border-border">
                 <CardContent className="p-0">
                   <button 
@@ -4329,7 +4643,11 @@ export default function Home() {
 
       {/* About Us Modal */}
       <Dialog open={isAboutModalOpen} onOpenChange={setIsAboutModalOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogContent 
+          className="max-h-[85vh] overflow-y-auto overflow-x-hidden"
+          onWheel={(e) => e.stopPropagation()}
+          onScroll={(e) => e.stopPropagation()}
+        >
           <DialogHeader>
             <DialogTitle>About</DialogTitle>
             <DialogDescription className="sr-only">Learn more about the app</DialogDescription>
@@ -4339,12 +4657,12 @@ export default function Home() {
             {/* Developer Section */}
             <Card className="border border-border bg-gradient-to-br from-primary/5 to-secondary/5">
               <CardContent className="p-6">
-                <h3 className="text-xl font-semibold mb-6 text-center">Developed By</h3>
+                <h3 className="text-base font-semibold mb-6 text-center">Developed By</h3>
                 <div className="flex flex-col items-center text-center">
                   <div className="h-20 w-20 rounded-full bg-gradient-to-r from-primary to-secondary flex items-center justify-center mb-4">
                     <User className="h-10 w-10 text-white" />
                   </div>
-                  <h4 className="text-2xl font-bold mb-2">Chinmaya Kapopara</h4>
+                  <h4 className="text-lg font-bold mb-2">Chinmaya Kapopara</h4>
                   <p className="text-muted-foreground mb-4">Enthusiatic Entrepreneur</p>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
                     <Mail className="h-4 w-4" />
@@ -4384,7 +4702,7 @@ export default function Home() {
           <div className="space-y-4 py-4">
             {pendingDateFilter === "singleDay" && (
               <div className="flex flex-col gap-2">
-                <Label htmlFor="singleDate" className="text-sm font-medium">Select Date</Label>
+                <Label htmlFor="singleDate" className="text-xs font-medium">Select Date</Label>
                 <Input
                   id="singleDate"
                   type="date"
@@ -4405,7 +4723,7 @@ export default function Home() {
             {pendingDateFilter === "dateRange" && (
               <div className="space-y-4">
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="dateRangeStart" className="text-sm font-medium">From Date</Label>
+                  <Label htmlFor="dateRangeStart" className="text-xs font-medium">From Date</Label>
                   <Input
                     id="dateRangeStart"
                     type="date"
@@ -4422,7 +4740,7 @@ export default function Home() {
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="dateRangeEnd" className="text-sm font-medium">To Date</Label>
+                  <Label htmlFor="dateRangeEnd" className="text-xs font-medium">To Date</Label>
                   <Input
                     id="dateRangeEnd"
                     type="date"
@@ -4799,7 +5117,7 @@ export default function Home() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="newPartyName" className="text-sm font-medium">Party Name</Label>
+              <Label htmlFor="newPartyName" className="text-xs font-medium">Party Name</Label>
               <Input
                 id="newPartyName"
                 placeholder="Enter party name"
@@ -4849,7 +5167,7 @@ export default function Home() {
               <strong>Note:</strong> This will update the party name in all existing transactions that use it.
             </p>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="renamePartyName" className="text-sm font-medium">Party Name</Label>
+              <Label htmlFor="renamePartyName" className="text-xs font-medium">Party Name</Label>
               <Input
                 id="renamePartyName"
                 placeholder="Enter party name"
@@ -4956,7 +5274,11 @@ export default function Home() {
           setIsAmountEditing(false);
         }
       }}>
-        <DialogContent className="max-w-md sm:max-w-lg">
+        <DialogContent 
+          className="max-w-md sm:max-w-lg overflow-x-hidden"
+          onWheel={(e) => e.stopPropagation()}
+          onScroll={(e) => e.stopPropagation()}
+        >
           <DialogHeader className="pb-2">
             <DialogTitle className="text-left">Add Transaction</DialogTitle>
             <DialogDescription className="sr-only">Add a new income or expense transaction</DialogDescription>
@@ -4993,9 +5315,9 @@ export default function Home() {
 
             {/* Amount */}
             <div className="flex flex-col gap-2">
-              <Label htmlFor="amount" className="text-sm font-medium">Amount</Label>
+              <Label htmlFor="amount" className="text-xs font-medium">Amount</Label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg font-semibold text-muted-foreground">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground">
                   ₹
                 </span>
                 <Input
@@ -5047,7 +5369,7 @@ export default function Home() {
 
             {/* Description */}
             <div className="flex flex-col gap-2">
-              <Label htmlFor="description" className="text-sm font-medium">Description</Label>
+              <Label htmlFor="description" className="text-xs font-medium">Description</Label>
               <Input
                 id="description"
                 placeholder="Enter description here"
@@ -5068,7 +5390,7 @@ export default function Home() {
 
             {/* Party */}
             <div className="flex flex-col gap-2">
-              <Label htmlFor="party" className="text-sm font-medium">Party (Optional)</Label>
+              <Label htmlFor="party" className="text-xs font-medium">Party (Optional)</Label>
               <Button
                 type="button"
                 variant="outline"
@@ -5087,7 +5409,7 @@ export default function Home() {
 
             {/* Date */}
             <div className="flex flex-col gap-2">
-              <Label htmlFor="date" className="text-sm font-medium">Date</Label>
+              <Label htmlFor="date" className="text-xs font-medium">Date</Label>
               <div className="relative">
                 <Input
                   id="date"
@@ -5130,7 +5452,11 @@ export default function Home() {
           setTransactionType("expense");
         }
       }}>
-        <DialogContent className="max-w-md sm:max-w-lg">
+        <DialogContent 
+          className="max-w-md sm:max-w-lg overflow-x-hidden"
+          onWheel={(e) => e.stopPropagation()}
+          onScroll={(e) => e.stopPropagation()}
+        >
           <DialogHeader>
             <DialogDescription className="sr-only">Edit transaction details</DialogDescription>
             <div className="flex items-center gap-3">
@@ -5202,9 +5528,9 @@ export default function Home() {
 
                   {/* Amount */}
                   <div className="flex flex-col gap-2">
-                    <Label htmlFor="editAmount" className="text-sm font-medium">Amount</Label>
+                    <Label htmlFor="editAmount" className="text-xs font-medium">Amount</Label>
                     <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg font-semibold text-muted-foreground">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground">
                         ₹
                       </span>
                       <Input
@@ -5263,7 +5589,7 @@ export default function Home() {
 
                   {/* Description */}
                   <div className="flex flex-col gap-2">
-                    <Label htmlFor="editDescription" className="text-sm font-medium">Description</Label>
+                    <Label htmlFor="editDescription" className="text-xs font-medium">Description</Label>
                     <Input
                       id="editDescription"
                       placeholder="Enter description here"
@@ -5286,7 +5612,7 @@ export default function Home() {
 
                   {/* Party */}
                   <div className="flex flex-col gap-2">
-                    <Label htmlFor="editParty" className="text-sm font-medium">Party (Optional)</Label>
+                    <Label htmlFor="editParty" className="text-xs font-medium">Party (Optional)</Label>
                     <Button
                       type="button"
                       variant="outline"
@@ -5308,7 +5634,7 @@ export default function Home() {
 
                   {/* Date */}
                   <div className="flex flex-col gap-2">
-                    <Label htmlFor="editDate" className="text-sm font-medium">Date</Label>
+                    <Label htmlFor="editDate" className="text-xs font-medium">Date</Label>
                     <div className="relative">
                       <Input
                         id="editDate"
@@ -5418,7 +5744,11 @@ export default function Home() {
 
       {/* Transaction History Dialog */}
       <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
-        <DialogContent className="max-w-md sm:max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogContent 
+          className="max-w-md sm:max-w-lg max-h-[80vh] overflow-y-auto overflow-x-hidden"
+          onWheel={(e) => e.stopPropagation()}
+          onScroll={(e) => e.stopPropagation()}
+        >
           <DialogHeader>
             <DialogTitle>Transaction History</DialogTitle>
             <DialogDescription>
@@ -5810,13 +6140,39 @@ export default function Home() {
           fetchActivities();
         }
       }}>
-        <DialogContent className="max-w-md sm:max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent 
+          className="max-w-md sm:max-w-lg max-h-[85vh] overflow-y-auto overflow-x-hidden"
+          onWheel={(e) => {
+            e.stopPropagation();
+          }}
+          onScroll={(e) => {
+            e.stopPropagation();
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Activity Log</DialogTitle>
             <DialogDescription className="sr-only">View all activities for this book</DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4 py-4">
+          <div 
+            className="space-y-4 py-4"
+            onWheel={(e) => {
+              e.stopPropagation();
+            }}
+            onScroll={(e) => {
+              e.stopPropagation();
+              // Prevent scroll from propagating to background
+              const target = e.currentTarget;
+              const scrollTop = target.scrollTop;
+              const scrollHeight = target.scrollHeight;
+              const clientHeight = target.clientHeight;
+              
+              // If at boundaries, prevent further scroll
+              if (scrollTop <= 0 || scrollTop + clientHeight >= scrollHeight) {
+                e.stopPropagation();
+              }
+            }}
+          >
             {activitiesLoading ? (
               <div className="flex items-center justify-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-4 border-primary border-t-transparent"></div>
@@ -5890,18 +6246,18 @@ export default function Home() {
                   return (
                     <Card key={activity.id} className="border border-border">
                       <CardContent className="p-4">
-                        <div className="flex items-start gap-3">
-                          <div className={`h-12 w-12 rounded-full flex items-center justify-center flex-shrink-0 border-2 ${colors.bg} ${colors.border}`}>
-                            <Icon className={`h-6 w-6 ${colors.icon}`} strokeWidth={2} />
+                        <div className="flex items-center gap-3">
+                          <div className={`h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 border-2 ${colors.bg} ${colors.border}`}>
+                            <Icon className={`h-4 w-4 ${colors.icon}`} strokeWidth={2} />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-foreground mb-1">
+                            <p className="text-xs font-medium text-foreground mb-1">
                               {activity.description}
                             </p>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <span className="font-medium text-foreground/80">{formatUserName(activity.user_name, activity.user_email)}</span>
-                              <span className="text-muted-foreground/50">•</span>
-                              <span className="text-muted-foreground">{dateTimeString}</span>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground flex-nowrap">
+                              <span className="font-medium text-foreground/80 whitespace-nowrap">{formatUserName(activity.user_name, activity.user_email)}</span>
+                              <span className="text-muted-foreground/50 flex-shrink-0">•</span>
+                              <span className="text-muted-foreground whitespace-nowrap">{dateTimeString}</span>
                             </div>
                           </div>
                         </div>
@@ -5923,7 +6279,11 @@ export default function Home() {
           setOpenMemberMenu(null);
         }
       }}>
-        <DialogContent className="max-w-md sm:max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent 
+          className="max-w-md sm:max-w-lg max-h-[85vh] overflow-y-auto overflow-x-hidden"
+          onWheel={(e) => e.stopPropagation()}
+          onScroll={(e) => e.stopPropagation()}
+        >
           <DialogHeader>
             <DialogTitle>Book Members</DialogTitle>
             <DialogDescription className="sr-only">Manage who has access to this book</DialogDescription>
@@ -5939,7 +6299,7 @@ export default function Home() {
             {/* Members List */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Current Members</h3>
+                <h3 className="text-sm font-semibold">Current Members</h3>
                 {membersLoading ? (
                   <span className="text-sm text-muted-foreground flex items-center gap-2">
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent"></div>
@@ -5962,7 +6322,7 @@ export default function Home() {
                 </Card>
               ) : (
                 <Card className="border border-border">
-                  <CardContent className="p-0">
+                  <CardContent className="p-0 overflow-x-hidden">
                     {bookMembers.map((member, index) => {
                       const isCurrentUser = member.email === profileData.email;
                       const roleColors: Record<string, string> = {
@@ -5981,7 +6341,7 @@ export default function Home() {
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex items-center gap-3 flex-1 min-w-0">
                               <div className={`h-12 w-12 rounded-full bg-gradient-to-r ${getGradientFromEmail(member.email)} flex items-center justify-center flex-shrink-0`}>
-                                <span className="text-base font-semibold text-white">
+                                <span className="text-sm font-semibold text-white">
                                   {getInitials(member.name || member.email)}
                                 </span>
                               </div>
@@ -6186,7 +6546,7 @@ export default function Home() {
           
           <div className="space-y-4 py-4">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="newMemberEmail" className="text-foreground text-sm font-medium">Email Address</Label>
+              <Label htmlFor="newMemberEmail" className="text-foreground text-xs font-medium">Email Address</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground stroke-current pointer-events-none" strokeWidth={2} />
                 <Input
