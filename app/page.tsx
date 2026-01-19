@@ -165,6 +165,8 @@ export default function Home() {
     created_at: string;
   }>>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
+  const [browserNotificationsEnabled, setBrowserNotificationsEnabled] = useState(false);
   
   // Check if it's first launch or PWA launch
   useEffect(() => {
@@ -208,6 +210,90 @@ export default function Home() {
       setShowLandingPage(false);
     }
   }, []);
+
+  // Check and initialize browser notification permission
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotificationPermission(Notification.permission);
+      
+      // Check if user has previously enabled notifications
+      const saved = localStorage.getItem('browserNotificationsEnabled');
+      if (saved === 'true' && Notification.permission === 'granted') {
+        setBrowserNotificationsEnabled(true);
+      }
+    }
+  }, []);
+
+  // Request notification permission when user enables it
+  const requestNotificationPermission = async () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      toast.error('Browser notifications are not supported in this browser');
+      return false;
+    }
+
+    if (Notification.permission === 'granted') {
+      setBrowserNotificationsEnabled(true);
+      localStorage.setItem('browserNotificationsEnabled', 'true');
+      toast.success('Browser notifications enabled');
+      return true;
+    }
+
+    if (Notification.permission === 'denied') {
+      toast.error('Notification permission was denied. Please enable it in your browser settings.');
+      return false;
+    }
+
+    // Request permission
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
+
+    if (permission === 'granted') {
+      setBrowserNotificationsEnabled(true);
+      localStorage.setItem('browserNotificationsEnabled', 'true');
+      toast.success('Browser notifications enabled');
+      return true;
+    } else {
+      toast.error('Notification permission denied');
+      return false;
+    }
+  };
+
+  // Show browser notification
+  const showBrowserNotification = (message: string, activityId?: number) => {
+    if (!browserNotificationsEnabled || notificationPermission !== 'granted') {
+      return;
+    }
+
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      return;
+    }
+
+    try {
+      const notification = new Notification('CashMate Activity', {
+        body: message,
+        icon: '/cashmate_wallet_logo.png',
+        badge: '/cashmate_wallet_logo.png',
+        tag: `activity-${activityId || Date.now()}`,
+        requireInteraction: false,
+      });
+
+      notification.onclick = () => {
+        window.focus();
+        if (activityId) {
+          setIsActivityModalOpen(true);
+          fetchActivities();
+        }
+        notification.close();
+      };
+
+      // Auto-close after 5 seconds
+      setTimeout(() => {
+        notification.close();
+      }, 5000);
+    } catch (error) {
+      console.error('Error showing browser notification:', error);
+    }
+  };
 
   // Check authentication on mount
   useEffect(() => {
@@ -324,9 +410,6 @@ export default function Home() {
   const [isPartySelectorOpen, setIsPartySelectorOpen] = useState(false);
   const [partySelectorContext, setPartySelectorContext] = useState<"add" | "edit">("add");
   const [isAmountEditing, setIsAmountEditing] = useState(false);
-  const [pullDistance, setPullDistance] = useState(0);
-  const [isPulling, setIsPulling] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
@@ -341,10 +424,6 @@ export default function Home() {
   const [isNameEditing, setIsNameEditing] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
-  const touchStartY = useRef<number | null>(null);
-  const scrollTop = useRef<number>(0);
-  const pullDistanceRef = useRef(0);
-  const isRefreshingRef = useRef(false);
   const isCreatingBookRef = useRef(false);
   // Helper to get IST date string
   const getISTDateString = () => {
@@ -1720,7 +1799,7 @@ export default function Home() {
           // Format and show notification
           const notificationMessage = formatActivityNotification(newActivity);
           
-          // Show notification with activity icon
+          // Show in-app toast notification
           toast.info(notificationMessage, {
             icon: <Activity className="h-4 w-4" />,
             duration: 4000,
@@ -1732,6 +1811,9 @@ export default function Home() {
               },
             },
           });
+
+          // Show browser notification if enabled
+          showBrowserNotification(notificationMessage, newActivity.id);
 
           // Refresh activities list
           fetchActivities();
@@ -2033,125 +2115,24 @@ export default function Home() {
     booksLoadingRef.current = booksLoading;
   }, [fetchTransactions, fetchBooks, books.length, booksLoading]);
 
-  // Attach pull-to-refresh handlers to window
+  // Auto-focus close button when activity modal opens
   useEffect(() => {
-    const handleTouchStart = (e: TouchEvent) => {
-      // Check if any modal is open - if so, disable pull-to-refresh
-      const hasOpenModal = isDialogOpen || isEditDialogOpen || isMembersModalOpen || 
-                          isActivityModalOpen || isProfileOpen || isSettingsModalOpen ||
-                          isAddMemberModalOpen || isEditRoleModalOpen || isHistoryDialogOpen ||
-                          isBookDialogOpen || isDeleteConfirmOpen || isRenameBookDialogOpen ||
-                          isDeleteBookConfirmOpen || isBookSelectorOpen || isDateFilterOpen ||
-                          isAddPartyDialogOpen || isRenamePartyDialogOpen || isDeletePartyConfirmOpen ||
-                          isPartySelectorOpen || isDeleteMemberConfirmOpen;
-      
-      if (hasOpenModal) return; // Don't allow pull-to-refresh when any modal is open
-      
-      const currentScrollTop = window.scrollY || document.documentElement.scrollTop;
-      scrollTop.current = currentScrollTop;
-      if (scrollTop.current === 0) {
-        touchStartY.current = e.touches[0].clientY;
-      }
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      // Check if any modal is open - if so, disable pull-to-refresh
-      const hasOpenModal = isDialogOpen || isEditDialogOpen || isMembersModalOpen || 
-                          isActivityModalOpen || isProfileOpen || isSettingsModalOpen ||
-                          isAddMemberModalOpen || isEditRoleModalOpen || isHistoryDialogOpen ||
-                          isBookDialogOpen || isDeleteConfirmOpen || isRenameBookDialogOpen ||
-                          isDeleteBookConfirmOpen || isBookSelectorOpen || isDateFilterOpen ||
-                          isAddPartyDialogOpen || isRenamePartyDialogOpen || isDeletePartyConfirmOpen ||
-                          isPartySelectorOpen || isDeleteMemberConfirmOpen;
-      
-      if (hasOpenModal) {
-        // Reset any pull state if modal is open
-        pullDistanceRef.current = 0;
-        setPullDistance(0);
-        setIsPulling(false);
-        touchStartY.current = null;
-        return;
-      }
-      
-      if (touchStartY.current === null) return;
-      
-      const currentScrollTop = window.scrollY || document.documentElement.scrollTop;
-      const touchY = e.touches[0].clientY;
-      const deltaY = touchY - touchStartY.current;
-      
-      if (currentScrollTop === 0 && deltaY > 0) {
-        setIsPulling(true);
-        const distance = Math.min(deltaY * 0.5, 120); // Max pull distance of 120px
-        pullDistanceRef.current = distance;
-        setPullDistance(distance);
-        // Only prevent default if we've pulled significantly (more than 30px)
-        if (distance > 30) {
-          e.preventDefault(); // Prevent default scroll behavior
+    if (isActivityModalOpen) {
+      // Small delay to ensure the dialog is fully rendered
+      const timer = setTimeout(() => {
+        // Find the close button in the dialog (Radix UI Dialog close button)
+        const dialog = document.querySelector('[data-state="open"]');
+        if (dialog) {
+          const closeButton = dialog.querySelector('button[aria-label="Close"], button:has(svg)') as HTMLButtonElement;
+          if (closeButton) {
+            closeButton.focus();
+          }
         }
-      } else if (deltaY <= 0 || currentScrollTop > 0) {
-        // Reset if scrolling up or not at top
-        pullDistanceRef.current = 0;
-        setPullDistance(0);
-        setIsPulling(false);
-        touchStartY.current = null;
-      }
-    };
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isActivityModalOpen]);
 
-    const handleTouchEnd = async () => {
-      // Check if any modal is open - if so, disable pull-to-refresh
-      const hasOpenModal = isDialogOpen || isEditDialogOpen || isMembersModalOpen || 
-                          isActivityModalOpen || isProfileOpen || isSettingsModalOpen ||
-                          isAddMemberModalOpen || isEditRoleModalOpen || isHistoryDialogOpen ||
-                          isBookDialogOpen || isDeleteConfirmOpen || isRenameBookDialogOpen ||
-                          isDeleteBookConfirmOpen || isBookSelectorOpen || isDateFilterOpen ||
-                          isAddPartyDialogOpen || isRenamePartyDialogOpen || isDeletePartyConfirmOpen ||
-                          isPartySelectorOpen || isDeleteMemberConfirmOpen;
-      
-      if (hasOpenModal) {
-        // Reset any pull state if modal is open
-        pullDistanceRef.current = 0;
-        setPullDistance(0);
-        setIsPulling(false);
-        touchStartY.current = null;
-        return;
-      }
-      
-      if (touchStartY.current === null) return;
-      
-      if (pullDistanceRef.current > 100 && !isRefreshingRef.current) {
-        // Trigger refresh
-        isRefreshingRef.current = true;
-        setIsRefreshing(true);
-        setLoading(true);
-        await fetchTransactionsRef.current();
-        await fetchBooksRef.current(); // Also refresh books
-        isRefreshingRef.current = false;
-        setIsRefreshing(false);
-      }
-      
-      // Reset pull state
-      pullDistanceRef.current = 0;
-      setPullDistance(0);
-      setIsPulling(false);
-      touchStartY.current = null;
-    };
-
-    window.addEventListener('touchstart', handleTouchStart, { passive: false });
-    window.addEventListener('touchmove', handleTouchMove, { passive: false });
-    window.addEventListener('touchend', handleTouchEnd);
-
-    return () => {
-      window.removeEventListener('touchstart', handleTouchStart);
-      window.removeEventListener('touchmove', handleTouchMove);
-      window.removeEventListener('touchend', handleTouchEnd);
-    };
-  }, [
-    isDialogOpen, isEditDialogOpen, isMembersModalOpen, isActivityModalOpen, isProfileOpen,
-    isSettingsModalOpen, isAddMemberModalOpen, isEditRoleModalOpen, isHistoryDialogOpen,
-    isBookDialogOpen, isDeleteConfirmOpen, isRenameBookDialogOpen, isDeleteBookConfirmOpen,
-    isBookSelectorOpen, isDateFilterOpen, isAddPartyDialogOpen, isRenamePartyDialogOpen,
-    isDeletePartyConfirmOpen, isPartySelectorOpen, isDeleteMemberConfirmOpen
-  ]);
 
   // Browser history management for back button navigation
   useEffect(() => {
@@ -3785,28 +3766,9 @@ export default function Home() {
       <main 
         className={`container mx-auto px-4 pt-2 max-w-2xl w-full overflow-x-hidden ${sortedTransactions.length === 0 && !loading ? 'h-full flex flex-col pb-6' : 'pb-6'}`}
         style={{ 
-          transform: isPulling ? `translateY(${pullDistance}px)` : 'translateY(0)',
-          transition: isPulling ? 'none' : 'transform 0.3s ease-out',
           paddingTop: 'calc(3.5rem + max(0.5rem, env(safe-area-inset-top)))'
         }}
       >
-        {/* Pull-to-refresh indicator */}
-        {(isPulling || isRefreshing) && (
-          <div className="flex justify-center items-center py-2 -mt-2 mb-2">
-            <div className="flex flex-col items-center">
-              {isRefreshing ? (
-                <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent"></div>
-              ) : (
-                <div className="flex flex-col items-center">
-                  <ArrowDown className={`h-5 w-5 text-muted-foreground transition-transform ${pullDistance > 100 ? 'rotate-180' : ''}`} />
-                  <span className="text-xs text-muted-foreground mt-1">
-                    {pullDistance > 100 ? 'Release to refresh' : 'Pull to refresh'}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
         {/* Conditional Content Based on Active Tab */}
         {activeTab === "home" && (
           <>
@@ -3835,7 +3797,7 @@ export default function Home() {
             ) : books.length > 0 ? (
               <>
         {/* Header with Blue Gradient Background */}
-        <header className="bg-gradient-to-r from-primary to-secondary text-primary-foreground rounded-xl mb-6 safe-area-top w-full shadow-2xl mt-4" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))", boxShadow: "0 0 20px rgba(0, 0, 0, 0.15)" }}>
+        <header className="bg-gradient-to-r from-primary to-secondary text-primary-foreground rounded-xl mb-6 safe-area-top w-full shadow-2xl mt-4" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))", boxShadow: "0 4px 20px rgba(0, 0, 0, 0.25), 0 0 10px rgba(0, 0, 0, 0.1)" }}>
           <div className="px-5 pt-2 pb-5">
             {/* Balance Card */}
             <div>
@@ -3898,7 +3860,7 @@ export default function Home() {
         {/* Search Bar */}
         <section className="mb-6">
           <div className="mb-4">
-            {loading || isRefreshing ? (
+            {loading ? (
               <div className="flex items-center gap-2 bg-background rounded-lg border border-border px-3 py-1.5">
                 <div className="h-4 w-4 bg-muted animate-pulse rounded"></div>
                 <div className="h-8 flex-1 bg-muted animate-pulse rounded"></div>
@@ -4179,8 +4141,8 @@ export default function Home() {
                     return (
                     <Card 
                       key={transaction.id} 
-                      className={`border border-border shadow-sm transition-shadow ${
-                        canView ? 'hover:shadow-md cursor-pointer' : 'cursor-default'
+                      className={`border border-border shadow-none transition-shadow ${
+                        canView ? 'cursor-pointer' : 'cursor-default'
                       }`}
                       onClick={async () => {
                         if (canEdit) {
@@ -4501,6 +4463,10 @@ export default function Home() {
                       setSingleDate("");
                     }
                     setPendingDateFilter("singleDay");
+                    // Set default to today's date if not already set
+                    if (!singleDate) {
+                      setSingleDate(getISTDateString());
+                    }
                     setIsDateFilterOpen(false);
                     setIsDatePickerOpen(true);
                   }}
@@ -4521,6 +4487,13 @@ export default function Home() {
                       setDateRangeEnd("");
                     }
                     setPendingDateFilter("dateRange");
+                    // Set default to today's date for both start and end if not already set
+                    if (!dateRangeStart) {
+                      setDateRangeStart(getISTDateString());
+                    }
+                    if (!dateRangeEnd) {
+                      setDateRangeEnd(getISTDateString());
+                    }
                     setIsDateFilterOpen(false);
                     setIsDatePickerOpen(true);
                   }}
@@ -4573,6 +4546,57 @@ export default function Home() {
                     </div>
                     <ChevronDown className="h-5 w-5 text-muted-foreground rotate-[-90deg]" />
                   </button>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Notifications Section */}
+            <div>
+              <h2 className="text-sm font-semibold mb-3 px-1">Notifications</h2>
+              <Card className="border border-border">
+                <CardContent className="p-0">
+                  <div className="flex items-center justify-between p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-gradient-to-r from-primary to-secondary flex items-center justify-center">
+                        <Bell className="h-5 w-5 text-white" />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-medium">Browser Notifications</p>
+                        <p className="text-xs text-muted-foreground">
+                          {notificationPermission === 'granted' 
+                            ? 'Receive notifications even when app is closed'
+                            : notificationPermission === 'denied'
+                            ? 'Permission denied. Enable in browser settings'
+                            : 'Get notified about new activities'}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (browserNotificationsEnabled) {
+                          setBrowserNotificationsEnabled(false);
+                          localStorage.setItem('browserNotificationsEnabled', 'false');
+                          toast.info('Browser notifications disabled');
+                        } else {
+                          await requestNotificationPermission();
+                        }
+                      }}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        browserNotificationsEnabled && notificationPermission === 'granted'
+                          ? 'bg-primary'
+                          : 'bg-muted'
+                      }`}
+                      disabled={notificationPermission === 'denied'}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          browserNotificationsEnabled && notificationPermission === 'granted'
+                            ? 'translate-x-6'
+                            : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -4706,7 +4730,7 @@ export default function Home() {
                 <Input
                   id="singleDate"
                   type="date"
-                  value={singleDate}
+                  value={singleDate || getISTDateString()}
                   onChange={(e) => setSingleDate(e.target.value)}
                   onClick={(e) => {
                     const input = e.currentTarget;
@@ -4727,7 +4751,7 @@ export default function Home() {
                   <Input
                     id="dateRangeStart"
                     type="date"
-                    value={dateRangeStart}
+                    value={dateRangeStart || getISTDateString()}
                     onChange={(e) => setDateRangeStart(e.target.value)}
                     onClick={(e) => {
                       const input = e.currentTarget;
@@ -4744,7 +4768,7 @@ export default function Home() {
                   <Input
                     id="dateRangeEnd"
                     type="date"
-                    value={dateRangeEnd}
+                    value={dateRangeEnd || getISTDateString()}
                     onChange={(e) => setDateRangeEnd(e.target.value)}
                     onClick={(e) => {
                       const input = e.currentTarget;
@@ -6185,7 +6209,7 @@ export default function Home() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-3 flex flex-col items-center">
                 {activities.map((activity) => {
                   const activityDate = new Date(activity.created_at);
                   const dateTimeString = formatDateTime(activityDate);
@@ -6244,7 +6268,7 @@ export default function Home() {
                   const colors = getActivityColors();
                   
                   return (
-                    <Card key={activity.id} className="border border-border">
+                    <Card key={activity.id} className="border border-border w-full max-w-full">
                       <CardContent className="p-4">
                         <div className="flex items-center gap-3">
                           <div className={`h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 border-2 ${colors.bg} ${colors.border}`}>
