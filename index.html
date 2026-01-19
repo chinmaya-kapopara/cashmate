@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#6366f1">
+    <meta name="description" content="Family Expense Manager - Track and manage shared family expenses">
+    <title>Family Expense Manager</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="styles.css">
+    <!-- Icon files can be added later - uncomment when ready -->
+    <!-- <link rel="apple-touch-icon" href="icon-192.png"> -->
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-content">
+                <h1 class="app-title">Family Expenses</h1>
+                <button class="icon-button" id="menuBtn" aria-label="Menu">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                        <line x1="3" y1="18" x2="21" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Summary Cards -->
+            <section class="summary-section">
+                <div class="summary-card total">
+                    <div class="summary-label">Total Spent</div>
+                    <div class="summary-amount">₹0.00</div>
+                    <div class="summary-period">This Month</div>
+                </div>
+                <div class="summary-cards-grid">
+                    <div class="summary-card">
+                        <div class="summary-label">You Paid</div>
+                        <div class="summary-amount">₹0.00</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-label">You Owe</div>
+                        <div class="summary-amount">₹0.00</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Filter Tabs -->
+            <section class="filter-section">
+                <div class="filter-tabs">
+                    <button class="filter-tab active" data-filter="all">All</button>
+                    <button class="filter-tab" data-filter="today">Today</button>
+                    <button class="filter-tab" data-filter="week">This Week</button>
+                    <button class="filter-tab" data-filter="month">This Month</button>
+                </div>
+            </section>
+
+            <!-- Expenses List -->
+            <section class="expenses-section">
+                <div class="section-header">
+                    <h2>Recent Expenses</h2>
+                    <button class="icon-button small" id="sortBtn" aria-label="Sort">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 6h18M7 12h10M11 18h2"></path>
+                        </svg>
+                    </button>
+                </div>
+                
+                <div class="expenses-list" id="expensesList">
+                    <!-- Empty State -->
+                    <div class="empty-state">
+                        <div class="empty-icon">
+                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M12 2v20M2 12h20"></path>
+                            </svg>
+                        </div>
+                        <h3>No expenses yet</h3>
+                        <p>Tap the + button to add your first expense</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Floating Action Button -->
+        <button class="fab" id="addExpenseBtn" aria-label="Add Expense">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+        </button>
+
+        <!-- Add Expense Modal -->
+        <div class="modal-overlay" id="addExpenseModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>Add Expense</h2>
+                    <button class="icon-button" id="closeModalBtn" aria-label="Close">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+                <div class="modal-content">
+                    <div class="form-group">
+                        <label for="expenseAmount">Amount</label>
+                        <div class="input-wrapper">
+                            <span class="currency-symbol">₹</span>
+                            <input type="number" id="expenseAmount" placeholder="0.00" step="0.01" min="0">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="expenseDescription">Description</label>
+                        <input type="text" id="expenseDescription" placeholder="What did you spend on?">
+                    </div>
+                    <div class="form-group">
+                        <label for="expenseCategory">Category</label>
+                        <div class="category-grid">
+                            <button class="category-option" data-category="food">
+                                <span class="category-icon">🍔</span>
+                                <span>Food</span>
+                            </button>
+                            <button class="category-option" data-category="transport">
+                                <span class="category-icon">🚗</span>
+                                <span>Transport</span>
+                            </button>
+                            <button class="category-option" data-category="shopping">
+                                <span class="category-icon">🛒</span>
+                                <span>Shopping</span>
+                            </button>
+                            <button class="category-option" data-category="bills">
+                                <span class="category-icon">💡</span>
+                                <span>Bills</span>
+                            </button>
+                            <button class="category-option" data-category="entertainment">
+                                <span class="category-icon">🎬</span>
+                                <span>Entertainment</span>
+                            </button>
+                            <button class="category-option" data-category="health">
+                                <span class="category-icon">🏥</span>
+                                <span>Health</span>
+                            </button>
+                            <button class="category-option" data-category="other">
+                                <span class="category-icon">📦</span>
+                                <span>Other</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="expensePaidBy">Paid By</label>
+                        <select id="expensePaidBy">
+                            <option value="you">You</option>
+                            <option value="member1">Family Member 1</option>
+                            <option value="member2">Family Member 2</option>
+                            <option value="member3">Family Member 3</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Split Between</label>
+                        <div class="split-options">
+                            <label class="checkbox-label">
+                                <input type="checkbox" checked>
+                                <span>You</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" checked>
+                                <span>Family Member 1</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" checked>
+                                <span>Family Member 2</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" checked>
+                                <span>Family Member 3</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="expenseDate">Date</label>
+                        <input type="date" id="expenseDate">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" id="cancelBtn">Cancel</button>
+                    <button class="btn btn-primary" id="saveExpenseBtn">Add Expense</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Side Menu (Hidden by default) -->
+        <div class="side-menu-overlay" id="sideMenu">
+            <div class="side-menu">
+                <div class="side-menu-header">
+                    <h2>Menu</h2>
+                    <button class="icon-button" id="closeMenuBtn" aria-label="Close Menu">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+                <nav class="side-menu-nav">
+                    <a href="#" class="menu-item">
+                        <span class="menu-icon">👥</span>
+                        <span>Family Members</span>
+                    </a>
+                    <a href="#" class="menu-item">
+                        <span class="menu-icon">📊</span>
+                        <span>Reports</span>
+                    </a>
+                    <a href="#" class="menu-item">
+                        <span class="menu-icon">⚙️</span>
+                        <span>Settings</span>
+                    </a>
+                    <a href="#" class="menu-item">
+                        <span class="menu-icon">ℹ️</span>
+                        <span>About</span>
+                    </a>
+                </nav>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        // Register service worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js')
+                    .catch(err => console.log('Service worker registration failed'));
+            });
+        }
+    </script>
+</body>
+</html>
