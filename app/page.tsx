@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Filter, ArrowDown, ArrowUp, ArrowDownCircle, ArrowUpCircle, Home as HomeIcon, BarChart3, Wallet, User, Users, Search, Calendar, ChevronDown, History, Trash2, MoreVertical, Pencil, Settings as SettingsIcon, Bell, Shield, HelpCircle, Info, ArrowLeft, Mail, X, CalendarDays, LogOut, Activity } from "lucide-react";
+import { Plus, Filter, ArrowDown, ArrowUp, ArrowDownCircle, ArrowUpCircle, Home as HomeIcon, BarChart3, Wallet, User, Users, Search, Calendar, ChevronDown, History, Trash2, MoreVertical, Pencil, Settings as SettingsIcon, Bell, Shield, HelpCircle, Info, ArrowLeft, Mail, X, CalendarDays, LogOut, Activity, Lock } from "lucide-react";
 import LandingPage from "@/components/landing-page";
 
 // Categories removed - using initials/avatars instead
@@ -168,18 +168,40 @@ export default function Home() {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
   const [browserNotificationsEnabled, setBrowserNotificationsEnabled] = useState(false);
   
-  // Check if it's first launch or PWA launch
+  // Check if it's first launch or PWA launch (not a manual refresh)
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    
+    // Check if this is a page reload/refresh (not a fresh app launch)
+    const navEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+    const isRefresh = navEntry?.type === 'reload' ||
+                     (performance.navigation && (performance.navigation as any).type === 1);
+    
+    // If it's a refresh, don't show landing page
+    if (isRefresh) {
+      setShowLandingPage(false);
+      return;
+    }
     
     // Check if app is launched as PWA (standalone mode)
     const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
                   (window.navigator as any).standalone === true ||
                   document.referrer.includes('android-app://');
     
-    // If it's a PWA, always show landing page
-    if (isPWA) {
+    // Check if PWA was already opened in this session (to avoid showing on refresh)
+    const pwaSessionKey = 'pwaSessionStarted';
+    const pwaSessionStarted = sessionStorage.getItem(pwaSessionKey);
+    
+    // If it's a PWA and not already started in this session, show landing page
+    if (isPWA && !pwaSessionStarted) {
       setShowLandingPage(true);
+      sessionStorage.setItem(pwaSessionKey, 'true');
+      return;
+    }
+    
+    // If PWA session already started, don't show landing page
+    if (isPWA && pwaSessionStarted) {
+      setShowLandingPage(false);
       return;
     }
     
@@ -413,6 +435,13 @@ export default function Home() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
+  const [isPasswordChangeModalOpen, setIsPasswordChangeModalOpen] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [profileData, setProfileData] = useState({
     name: "Chinmay Kapopara",
     email: user?.email || "kapopara.king@gmail.com",
@@ -449,10 +478,14 @@ export default function Home() {
   ) => {
     // Use provided bookId or fall back to selectedBookId
     const targetBookId = bookId || selectedBookId;
-    if (!targetBookId || !user?.email) return;
+    if (!targetBookId || !user?.email) {
+      console.warn('Cannot log activity: missing bookId or user email', { targetBookId, userEmail: user?.email });
+      return;
+    }
 
     try {
-      await supabase.rpc('log_activity', {
+      console.log('Logging activity:', { activityType, description, targetBookId, userEmail: user.email });
+      const { error, data } = await supabase.rpc('log_activity', {
         p_book_id: targetBookId,
         p_user_email: user.email,
         p_user_name: getCurrentUserName(),
@@ -460,6 +493,12 @@ export default function Home() {
         p_description: description,
         p_metadata: metadata || null
       });
+      
+      if (error) {
+        console.error('Error logging activity:', error);
+      } else {
+        console.log('Activity logged successfully:', { activityType, targetBookId });
+      }
     } catch (error) {
       console.error('Error logging activity:', error);
       // Don't show error to user, activity logging is non-critical
@@ -823,6 +862,49 @@ export default function Home() {
       console.error('Error fetching user profile:', error);
     } finally {
       setProfileLoading(false);
+    }
+  };
+
+  // Handle password change
+  const handlePasswordChange = async () => {
+    if (!passwordData.newPassword || !passwordData.confirmPassword) {
+      toast.error("Please fill in all fields");
+      return;
+    }
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      toast.error("New passwords do not match");
+      return;
+    }
+
+    if (passwordData.newPassword.length < 6) {
+      toast.error("Password must be at least 6 characters long");
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      // Update password using Supabase auth
+      const { error } = await supabase.auth.updateUser({
+        password: passwordData.newPassword
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      toast.success("Password changed successfully");
+      setIsPasswordChangeModalOpen(false);
+      setPasswordData({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+    } catch (error: any) {
+      console.error('Error changing password:', error);
+      toast.error(error.message || 'Failed to change password. Please try again.');
+    } finally {
+      setIsChangingPassword(false);
     }
   };
 
@@ -1788,13 +1870,29 @@ export default function Home() {
           filter: `book_id=eq.${selectedBookId}`,
         },
         (payload) => {
+          console.log('Activity log INSERT event received:', payload);
           const newActivity = (payload as any).new_record;
-          if (!newActivity) return;
-          
-          // Don't show notification for current user's own activities
-          if (newActivity.user_email === userEmailRef.current) {
+          if (!newActivity) {
+            console.warn('No new_record in activity log payload');
             return;
           }
+          
+          // Get current user email from ref (most up-to-date) or fallback to user?.email
+          const currentUserEmail = userEmailRef.current || user?.email;
+          
+          console.log('New activity:', newActivity);
+          console.log('Current user email:', currentUserEmail);
+          console.log('Activity user email:', newActivity.user_email);
+          console.log('Activity type:', newActivity.activity_type);
+          console.log('Book ID:', newActivity.book_id);
+          
+          // Don't show notification for current user's own activities
+          if (newActivity.user_email === currentUserEmail) {
+            console.log('Skipping notification - activity from current user');
+            return;
+          }
+
+          console.log('Showing notification for activity:', newActivity.activity_type);
 
           // Format and show notification
           const notificationMessage = formatActivityNotification(newActivity);
@@ -2199,6 +2297,10 @@ export default function Home() {
         setIsProfileOpen(false);
         return;
       }
+      if (isPasswordChangeModalOpen) {
+        setIsPasswordChangeModalOpen(false);
+        return;
+      }
       if (isSettingsModalOpen) {
         setIsSettingsModalOpen(false);
         return;
@@ -2217,7 +2319,7 @@ export default function Home() {
     isHistoryDialogOpen, isDeleteMemberConfirmOpen, isDeleteBookConfirmOpen, isDeleteConfirmOpen,
     isEditDialogOpen, isDialogOpen, isEditRoleModalOpen, isAddMemberModalOpen, isPartySelectorOpen,
     isDateFilterOpen, isBookDialogOpen, isRenameBookDialogOpen, isActivityModalOpen,
-    isMembersModalOpen, isProfileOpen, isSettingsModalOpen, activeTab
+    isMembersModalOpen, isProfileOpen, isPasswordChangeModalOpen, isSettingsModalOpen, activeTab
   ]);
 
   // Push to history when modals open or tab changes
@@ -2226,7 +2328,7 @@ export default function Home() {
       isDeleteConfirmOpen || isEditDialogOpen || isDialogOpen || isEditRoleModalOpen ||
       isAddMemberModalOpen || isPartySelectorOpen || isDateFilterOpen || isBookDialogOpen ||
       isRenameBookDialogOpen || isActivityModalOpen || isMembersModalOpen || isProfileOpen ||
-      isSettingsModalOpen || activeTab === 'reports';
+      isPasswordChangeModalOpen || isSettingsModalOpen || activeTab === 'reports';
 
     if (hasOpenModal) {
       const state = { 
@@ -2246,7 +2348,7 @@ export default function Home() {
   useEffect(() => {
     const hasOpenModal = isDialogOpen || isEditDialogOpen || isMembersModalOpen || 
                         isActivityModalOpen || isProfileOpen || isSettingsModalOpen ||
-                        isAddMemberModalOpen || isEditRoleModalOpen || isHistoryDialogOpen ||
+                        isPasswordChangeModalOpen || isAddMemberModalOpen || isEditRoleModalOpen || isHistoryDialogOpen ||
                         isBookDialogOpen || isDeleteConfirmOpen || isRenameBookDialogOpen ||
                         isDeleteBookConfirmOpen || isBookSelectorOpen || isDateFilterOpen ||
                         isAddPartyDialogOpen || isRenamePartyDialogOpen || isDeletePartyConfirmOpen ||
@@ -3684,7 +3786,7 @@ export default function Home() {
   }
 
   return (
-    <div className={`bg-background pb-24 overflow-x-hidden ${sortedTransactions.length === 0 && !loading ? 'h-screen overflow-y-hidden' : 'min-h-screen'}`}>
+    <div className={`bg-gray-50 dark:bg-background pb-24 overflow-x-hidden ${sortedTransactions.length === 0 && !loading ? 'h-screen overflow-y-hidden' : 'min-h-screen'}`}>
       {/* Fixed Header with Book Selector and Settings */}
       <header className="fixed top-0 left-0 right-0 z-50 bg-background border-b border-border safe-area-top" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
         <div className="container mx-auto px-4 max-w-2xl w-full">
@@ -3701,9 +3803,9 @@ export default function Home() {
                   ) : (
                     <button
                       onClick={handleOpenBookSelector}
-                      className="flex items-center gap-1.5 px-0 py-2 hover:opacity-70 transition-opacity"
+                      className="flex items-center gap-1.5 px-0 py-2 hover:opacity-70 transition-opacity hover:bg-transparent active:bg-transparent focus:bg-transparent"
                     >
-                      <span className="font-semibold text-sm truncate">{selectedBook?.name || "Select a book"}</span>
+                      <span className="font-semibold text-base truncate">{selectedBook?.name || "Select a book"}</span>
                       <ChevronDown className="h-5 w-5 flex-shrink-0" />
                     </button>
                   )}
@@ -4522,7 +4624,7 @@ export default function Home() {
           <div className="space-y-4 py-4">
             {/* Account Section */}
             <div>
-              <h2 className="text-sm font-semibold mb-3 px-1">Account</h2>
+              <h2 className="text-xs font-semibold mb-3 px-1">Account</h2>
               <Card className="border border-border">
                 <CardContent className="p-0">
                   <button 
@@ -4540,8 +4642,39 @@ export default function Home() {
                         <User className="h-5 w-5 text-white" />
                       </div>
                       <div className="text-left">
-                        <p className="font-medium">Profile</p>
-                        <p className="text-sm text-muted-foreground">Manage your profile information</p>
+                        <p className="text-xs font-medium">Profile</p>
+                        <p className="text-xs text-muted-foreground">Manage your profile information</p>
+                      </div>
+                    </div>
+                    <ChevronDown className="h-5 w-5 text-muted-foreground rotate-[-90deg]" />
+                  </button>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Password Change Section */}
+            <div>
+              <Card className="border border-border">
+                <CardContent className="p-0">
+                  <button 
+                    onClick={() => {
+                      setIsSettingsModalOpen(false);
+                      setIsPasswordChangeModalOpen(true);
+                      setPasswordData({
+                        currentPassword: "",
+                        newPassword: "",
+                        confirmPassword: "",
+                      });
+                    }}
+                    className="w-full flex items-center justify-between p-4 hover:bg-accent transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-gradient-to-r from-primary to-secondary flex items-center justify-center">
+                        <Lock className="h-5 w-5 text-white" />
+                      </div>
+                      <div className="text-left">
+                        <p className="text-xs font-medium">Change Password</p>
+                        <p className="text-xs text-muted-foreground">Update your account password</p>
                       </div>
                     </div>
                     <ChevronDown className="h-5 w-5 text-muted-foreground rotate-[-90deg]" />
@@ -4552,23 +4685,17 @@ export default function Home() {
 
             {/* Notifications Section */}
             <div>
-              <h2 className="text-sm font-semibold mb-3 px-1">Notifications</h2>
+              <h2 className="text-xs font-semibold mb-3 px-1">Notifications</h2>
               <Card className="border border-border">
                 <CardContent className="p-0">
                   <div className="flex items-center justify-between p-4">
                     <div className="flex items-center gap-3">
                       <div className="h-10 w-10 rounded-full bg-gradient-to-r from-primary to-secondary flex items-center justify-center">
-                        <Bell className="h-5 w-5 text-white" />
+                        <Bell className="h-5 w-5 text-white" strokeWidth={2} />
                       </div>
                       <div className="text-left">
-                        <p className="font-medium">Browser Notifications</p>
-                        <p className="text-xs text-muted-foreground">
-                          {notificationPermission === 'granted' 
-                            ? 'Receive notifications even when app is closed'
-                            : notificationPermission === 'denied'
-                            ? 'Permission denied. Enable in browser settings'
-                            : 'Get notified about new activities'}
-                        </p>
+                        <p className="text-xs font-medium">Browser Notifications</p>
+                        <p className="text-xs text-muted-foreground">Receive notifications</p>
                       </div>
                     </div>
                     <button
@@ -4581,7 +4708,7 @@ export default function Home() {
                           await requestNotificationPermission();
                         }
                       }}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
                         browserNotificationsEnabled && notificationPermission === 'granted'
                           ? 'bg-primary'
                           : 'bg-muted'
@@ -4589,10 +4716,10 @@ export default function Home() {
                       disabled={notificationPermission === 'denied'}
                     >
                       <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        className={`absolute h-4 w-4 rounded-full bg-white shadow-md transition-all duration-200 ease-in-out ${
                           browserNotificationsEnabled && notificationPermission === 'granted'
-                            ? 'translate-x-6'
-                            : 'translate-x-1'
+                            ? 'left-[22px]'
+                            : 'left-[2px]'
                         }`}
                       />
                     </button>
@@ -4603,7 +4730,7 @@ export default function Home() {
 
             {/* About Section */}
             <div>
-              <h2 className="text-sm font-semibold mb-3 px-1">About</h2>
+              <h2 className="text-xs font-semibold mb-3 px-1">About</h2>
               <Card className="border border-border">
                 <CardContent className="p-0">
                   <button 
@@ -4619,7 +4746,7 @@ export default function Home() {
                       </div>
                       <div className="text-left">
                         <p className="font-medium">About Us</p>
-                        <p className="text-sm text-muted-foreground">Learn more about the app</p>
+                        <p className="text-xs text-muted-foreground">Learn more about the app</p>
                       </div>
                     </div>
                     <ChevronDown className="h-5 w-5 text-muted-foreground rotate-[-90deg]" />
@@ -4627,6 +4754,76 @@ export default function Home() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Password Change Dialog */}
+            <Dialog open={isPasswordChangeModalOpen} onOpenChange={setIsPasswordChangeModalOpen}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Change Password</DialogTitle>
+                  <DialogDescription>
+                    Enter your new password. Make sure it's at least 6 characters long.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4 py-4">
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="newPassword" className="text-xs font-medium">
+                      New Password
+                    </Label>
+                    <Input
+                      id="newPassword"
+                      type="password"
+                      placeholder="Enter new password"
+                      value={passwordData.newPassword}
+                      onChange={(e) =>
+                        setPasswordData({ ...passwordData, newPassword: e.target.value })
+                      }
+                      className="text-xs"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="confirmPassword" className="text-xs font-medium">
+                      Confirm New Password
+                    </Label>
+                    <Input
+                      id="confirmPassword"
+                      type="password"
+                      placeholder="Confirm new password"
+                      value={passwordData.confirmPassword}
+                      onChange={(e) =>
+                        setPasswordData({ ...passwordData, confirmPassword: e.target.value })
+                      }
+                      className="text-xs"
+                    />
+                  </div>
+                </div>
+
+                <DialogFooter className="gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsPasswordChangeModalOpen(false);
+                      setPasswordData({
+                        currentPassword: "",
+                        newPassword: "",
+                        confirmPassword: "",
+                      });
+                    }}
+                    disabled={isChangingPassword}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handlePasswordChange}
+                    disabled={isChangingPassword || !passwordData.newPassword || !passwordData.confirmPassword}
+                    className="bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90"
+                  >
+                    {isChangingPassword ? "Changing..." : "Change Password"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             {/* Logout Section */}
             <div className="pt-4">
@@ -6304,7 +6501,7 @@ export default function Home() {
         }
       }}>
         <DialogContent 
-          className="max-w-md sm:max-w-lg max-h-[85vh] overflow-y-auto overflow-x-hidden"
+          className="max-w-md sm:max-w-lg max-h-[85vh] overflow-y-auto overflow-x-hidden overflow-visible"
           onWheel={(e) => e.stopPropagation()}
           onScroll={(e) => e.stopPropagation()}
         >
@@ -6315,7 +6512,7 @@ export default function Home() {
           
           <div className="space-y-6 py-4">
             <div>
-              <p className="text-sm text-muted-foreground mb-4">
+              <p className="text-xs text-muted-foreground mb-4">
                 Manage who has access to "{selectedBook?.name || "this book"}"
               </p>
             </div>
@@ -6323,14 +6520,14 @@ export default function Home() {
             {/* Members List */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold">Current Members</h3>
+                <h3 className="text-xs font-semibold">Current Members</h3>
                 {membersLoading ? (
-                  <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground flex items-center gap-2">
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent"></div>
                     Loading...
                   </span>
                 ) : (
-                  <span className="text-sm text-muted-foreground">{bookMembers.length} {bookMembers.length === 1 ? 'member' : 'members'}</span>
+                  <span className="text-xs text-muted-foreground">{bookMembers.length} {bookMembers.length === 1 ? 'member' : 'members'}</span>
                 )}
               </div>
 
@@ -6341,12 +6538,12 @@ export default function Home() {
               ) : bookMembers.length === 0 ? (
                 <Card className="border border-border">
                   <CardContent className="p-8 text-center">
-                    <p className="text-muted-foreground">No members yet. Add members to share this book.</p>
+                    <p className="text-xs text-muted-foreground">No members yet. Add members to share this book.</p>
                   </CardContent>
                 </Card>
               ) : (
                 <Card className="border border-border">
-                  <CardContent className="p-0 overflow-x-hidden">
+                  <CardContent className="p-0 overflow-x-hidden overflow-y-visible">
                     {bookMembers.map((member, index) => {
                       const isCurrentUser = member.email === profileData.email;
                       const roleColors: Record<string, string> = {
@@ -6361,7 +6558,7 @@ export default function Home() {
                       const isOnlyOwner = isCurrentUser && member.role === 'owner' && ownerCount === 1;
                       
                       return (
-                        <div key={member.email} className="p-4 border-b border-border last:border-b-0 relative">
+                        <div key={member.email} className="p-4 border-b border-border last:border-b-0 relative overflow-visible">
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex items-center gap-3 flex-1 min-w-0">
                               <div className={`h-12 w-12 rounded-full bg-gradient-to-r ${getGradientFromEmail(member.email)} flex items-center justify-center flex-shrink-0`}>
@@ -6371,12 +6568,12 @@ export default function Home() {
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 mb-1">
-                                  <p className="font-medium text-foreground truncate">{member.name || member.email.split('@')[0]}</p>
+                                  <p className="text-xs font-medium text-foreground truncate">{member.name || member.email.split('@')[0]}</p>
                                   <span className={`text-xs px-2 py-0.5 rounded-full ${roleColors[member.role] || roleColors.viewer} font-medium`}>
                                     {member.role.charAt(0).toUpperCase() + member.role.slice(1)}
                                   </span>
                                 </div>
-                                <p className="text-sm text-muted-foreground truncate">{member.email}</p>
+                                <p className="text-xs text-muted-foreground truncate">{member.email}</p>
                               </div>
                             </div>
                             {(() => {
@@ -6416,7 +6613,7 @@ export default function Home() {
                                     {openMemberMenu === member.email && (
                                       <div 
                                         data-member-menu
-                                        className="absolute right-0 top-full mt-1 bg-background border border-border rounded-lg shadow-lg z-50 min-w-[140px] overflow-visible"
+                                        className="absolute right-0 bottom-full mb-1 bg-background border border-border rounded-lg shadow-lg z-[100] min-w-[140px]"
                                         onClick={(e) => e.stopPropagation()}
                                         onMouseDown={(e) => e.stopPropagation()}
                                       >
@@ -6485,7 +6682,7 @@ export default function Home() {
                                     {openMemberMenu === member.email && (
                                       <div 
                                         data-member-menu
-                                        className="absolute right-0 top-full mt-1 bg-background border border-border rounded-lg shadow-lg z-50 min-w-[140px] overflow-visible"
+                                        className="absolute right-0 bottom-full mb-1 bg-background border border-border rounded-lg shadow-lg z-[100] min-w-[140px]"
                                         onClick={(e) => e.stopPropagation()}
                                         onMouseDown={(e) => e.stopPropagation()}
                                       >
