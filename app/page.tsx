@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Plus, Filter, ArrowDown, ArrowUp, ArrowDownCircle, ArrowUpCircle, Home as HomeIcon, BarChart3, Wallet, User, Users, Search, Calendar, ChevronDown, History, Trash2, MoreVertical, Pencil, Settings as SettingsIcon, Bell, Shield, HelpCircle, Info, ArrowLeft, Mail, X, CalendarDays, LogOut, Activity } from "lucide-react";
+import LandingPage from "@/components/landing-page";
 
 // Categories removed - using initials/avatars instead
 
@@ -35,7 +36,7 @@ const formatDateDisplay = (date: Date) => {
 
 // Helper function to format date and time
 const formatDateTime = (date: Date): string => {
-  // Format: "Jan 15, 2024, 2:30 PM"
+  // Format: "Jan 19, 2026, 12:59 PM"
   return date.toLocaleString("en-US", {
     month: "short",
     day: "numeric",
@@ -44,6 +45,20 @@ const formatDateTime = (date: Date): string => {
     minute: "2-digit",
     hour12: true
   });
+};
+
+// Helper function to format user name properly
+const formatUserName = (name: string | null, email: string): string => {
+  if (name) {
+    // Capitalize first letter of each word
+    return name
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  }
+  // Fallback to email username, capitalized
+  const username = email.split('@')[0];
+  return username.charAt(0).toUpperCase() + username.slice(1).toLowerCase();
 };
 
 // Initial sample transaction data (only used for type inference)
@@ -123,6 +138,7 @@ type Book = {
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [showLandingPage, setShowLandingPage] = useState(true); // Start with true to ensure it shows
   const [activeTab, setActiveTab] = useState("home");
   const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
@@ -150,6 +166,49 @@ export default function Home() {
   }>>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   
+  // Check if it's first launch or PWA launch
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    // Check if app is launched as PWA (standalone mode)
+    const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
+                  (window.navigator as any).standalone === true ||
+                  document.referrer.includes('android-app://');
+    
+    // If it's a PWA, always show landing page
+    if (isPWA) {
+      setShowLandingPage(true);
+      return;
+    }
+    
+    // For regular browser mode, check if it's first launch
+    let hasSeenLanding = false;
+    try {
+      // Check if it's the first time opening the app
+      // Use try-catch to handle incognito mode or localStorage restrictions
+      hasSeenLanding = !!localStorage.getItem('hasSeenLandingPage');
+    } catch (error) {
+      // If localStorage is not available (e.g., some incognito modes), treat as first visit
+      // Landing page will show since we start with showLandingPage = true
+      hasSeenLanding = false;
+    }
+    
+    // For regular browser mode:
+    // Show landing page only on first launch
+    if (!hasSeenLanding) {
+      setShowLandingPage(true);
+      try {
+        localStorage.setItem('hasSeenLandingPage', 'true');
+      } catch (error) {
+        // Ignore localStorage errors in incognito mode
+        // Landing page will still show
+      }
+    } else {
+      // User has seen it before in regular browser, so hide it
+      setShowLandingPage(false);
+    }
+  }, []);
+
   // Check authentication on mount
   useEffect(() => {
     const checkAuth = async () => {
@@ -763,11 +822,7 @@ export default function Home() {
       return;
     }
 
-    // Check if user is trying to change their own role
-    if (email === user.email) {
-      toast.error("You cannot change your own role");
-      return;
-    }
+    const isSelfChange = email === user.email;
 
     try {
       // Get current user's role and the member being edited
@@ -789,13 +844,34 @@ export default function Home() {
       const currentUserRole = currentUserRoleData.data?.role;
       const currentMemberRole = memberData.data?.role;
 
-      // Check if current user is owner (only owners can change roles)
-      if (currentUserRole !== 'owner') {
-        toast.error("Only book owners can change member roles");
-        return;
+      // If changing own role, allow it but enforce role hierarchy (cannot promote)
+      // If changing someone else's role, only owners can do it
+      if (isSelfChange) {
+        // Role hierarchy: Owner (4) > Admin (3) > Editor (2) > Viewer (1)
+        const roleHierarchy: Record<string, number> = {
+          owner: 4,
+          admin: 3,
+          editor: 2,
+          viewer: 1
+        };
+        
+        const currentRoleLevel = roleHierarchy[currentMemberRole] || 1;
+        const newRoleLevel = roleHierarchy[role] || 1;
+        
+        // Users can only change to their current role or lower (cannot promote themselves)
+        if (newRoleLevel > currentRoleLevel) {
+          toast.error("You cannot promote yourself to a higher role. You can only change to your current role or a lower role.");
+          return;
+        }
+      } else {
+        // Changing someone else's role - only owners can do it
+        if (currentUserRole !== 'owner') {
+          toast.error("Only book owners can change other members' roles");
+          return;
+        }
       }
 
-      // If changing an owner's role, check if it's the last owner
+      // If changing an owner's role (self or other), check if it's the last owner
       if (currentMemberRole === 'owner' && role !== 'owner') {
         // Count how many owners exist
         const { data: ownersData, error: countError } = await supabase
@@ -831,15 +907,18 @@ export default function Home() {
         throw error;
       }
 
-      toast.success("Role updated successfully!");
+      toast.success(isSelfChange ? "Your role has been updated successfully!" : "Role updated successfully!");
       await fetchBookMembers();
       
       // Log activity (capture values before clearing state)
       const memberName = editingMemberName || email;
-      await logActivity('member_role_changed', `Changed ${memberName}'s role from ${currentMemberRole} to ${role}`, {
+      await logActivity('member_role_changed', isSelfChange 
+        ? `Changed own role from ${currentMemberRole} to ${role}`
+        : `Changed ${memberName}'s role from ${currentMemberRole} to ${role}`, {
         member_email: email,
         old_role: currentMemberRole,
-        new_role: role
+        new_role: role,
+        is_self_change: isSelfChange
       });
       
       setIsEditRoleModalOpen(false);
@@ -863,11 +942,7 @@ export default function Home() {
       return;
     }
 
-    // Check if user is trying to remove themselves
-    if (email === user.email) {
-      toast.error("You cannot remove yourself from the book");
-      return;
-    }
+    const isSelfRemoval = email === user.email;
 
     try {
       // Check if the member being removed is an owner
@@ -904,6 +979,15 @@ export default function Home() {
         }
       }
 
+      // If removing someone else, check permissions (only owners/admins can remove others)
+      if (!isSelfRemoval) {
+        const currentUserRole = bookRoles[selectedBookId];
+        if (currentUserRole !== 'owner' && currentUserRole !== 'admin') {
+          toast.error("You don't have permission to remove members");
+          return;
+        }
+      }
+
       const { error } = await supabase
         .from('book_members')
         .delete()
@@ -919,15 +1003,21 @@ export default function Home() {
         throw error;
       }
 
-      toast.success("Member removed successfully!");
+      toast.success(isSelfRemoval ? "You have left the book successfully!" : "Member removed successfully!");
       await fetchBookMembers();
       setIsDeleteMemberConfirmOpen(false);
       setMemberToDelete("");
       
       // Log activity
-      await logActivity('member_removed', `Removed member: ${email}`, {
-        member_email: email
+      await logActivity('member_removed', isSelfRemoval ? `Left the book: ${email}` : `Removed member: ${email}`, {
+        member_email: email,
+        is_self_removal: isSelfRemoval
       });
+      
+      // If user removed themselves, refresh books list
+      if (isSelfRemoval) {
+        await fetchBooks();
+      }
     } catch (error: any) {
       // Check if it's a permission error first
       const isPermissionErr = await handlePermissionError(error, 'remove members');
@@ -1561,6 +1651,8 @@ export default function Home() {
   // Subscribe to realtime book_members changes to refresh UI when role changes
   useEffect(() => {
     if (!user?.email) return;
+    // Only subscribe if there are books - avoids errors when no books exist
+    if (booksLengthRef.current === 0 && !booksLoadingRef.current) return;
 
     const channel = supabase
       .channel(`book_members:${user.email}`, {
@@ -1798,10 +1890,16 @@ export default function Home() {
         if (status === 'SUBSCRIBED') {
           console.log('Subscribed to book_members changes for user:', user.email);
         } else if (status === 'CHANNEL_ERROR') {
-          console.error('Error subscribing to book_members changes:', err);
+          // Only log error if there are books - when no books exist, this is expected
+          if (booksLengthRef.current > 0) {
+            console.error('Error subscribing to book_members changes:', err);
+          }
           // Don't show error to user - realtime is optional, app will work with polling
         } else if (status === 'TIMED_OUT') {
-          console.warn('Book members subscription timed out for user:', user.email);
+          // Only log warning if there are books
+          if (booksLengthRef.current > 0) {
+            console.warn('Book members subscription timed out for user:', user.email);
+          }
         } else if (status === 'CLOSED') {
           console.log('Book members subscription closed for user:', user.email);
         }
@@ -1816,12 +1914,16 @@ export default function Home() {
   // Store fetch functions in refs to avoid dependency issues
   const fetchTransactionsRef = useRef(fetchTransactions);
   const fetchBooksRef = useRef(fetchBooks);
+  const booksLengthRef = useRef(books.length);
+  const booksLoadingRef = useRef(booksLoading);
   
   // Update refs when functions change
   useEffect(() => {
     fetchTransactionsRef.current = fetchTransactions;
     fetchBooksRef.current = fetchBooks;
-  }, [fetchTransactions, fetchBooks]);
+    booksLengthRef.current = books.length;
+    booksLoadingRef.current = booksLoading;
+  }, [fetchTransactions, fetchBooks, books.length, booksLoading]);
 
   // Attach pull-to-refresh handlers to window
   useEffect(() => {
@@ -3279,6 +3381,18 @@ export default function Home() {
     );
   }
 
+  // Show landing page on first launch or PWA launch
+  // Show it regardless of authLoading to ensure it's visible for at least 2 seconds
+  if (showLandingPage) {
+    return (
+      <LandingPage
+        onComplete={() => {
+          setShowLandingPage(false);
+        }}
+      />
+    );
+  }
+
   return (
     <div className={`bg-background pb-24 overflow-x-hidden ${sortedTransactions.length === 0 && !loading ? 'h-screen overflow-y-hidden' : 'min-h-screen'}`}>
       {/* Fixed Header with Book Selector and Settings */}
@@ -3287,19 +3401,23 @@ export default function Home() {
           <div className="flex items-center justify-between py-2">
             {/* Book Selector - Left side with medium width */}
             <div className="w-48 flex-shrink-0">
-              {booksLoading ? (
-                <div className="flex items-center gap-2 px-0 py-2">
-                  <div className="h-5 w-24 bg-muted animate-pulse rounded"></div>
-                  <div className="h-4 w-4 bg-muted animate-pulse rounded"></div>
-                </div>
-              ) : (
-                <button
-                  onClick={handleOpenBookSelector}
-                  className="flex items-center gap-1.5 px-0 py-2 hover:opacity-70 transition-opacity"
-                >
-                  <span className="font-semibold text-lg truncate">{selectedBook?.name || "Select a book"}</span>
-                  <ChevronDown className="h-5 w-5 flex-shrink-0" />
-                </button>
+              {books.length > 0 && (
+                <>
+                  {booksLoading ? (
+                    <div className="flex items-center gap-2 px-0 py-2">
+                      <div className="h-5 w-24 bg-muted animate-pulse rounded"></div>
+                      <div className="h-4 w-4 bg-muted animate-pulse rounded"></div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleOpenBookSelector}
+                      className="flex items-center gap-1.5 px-0 py-2 hover:opacity-70 transition-opacity"
+                    >
+                      <span className="font-semibold text-lg truncate">{selectedBook?.name || "Select a book"}</span>
+                      <ChevronDown className="h-5 w-5 flex-shrink-0" />
+                    </button>
+                  )}
+                </>
               )}
             </div>
 
@@ -3398,9 +3516,9 @@ export default function Home() {
                     onClick={() => {
                       setIsBookDialogOpen(true);
                     }}
-                    className="bg-gradient-to-r from-primary to-secondary text-primary-foreground font-semibold py-6 px-8 rounded-lg text-lg hover:opacity-90 transition-opacity shadow-lg"
+                    className="bg-gradient-to-r from-primary to-secondary text-primary-foreground font-semibold py-6 px-8 rounded-lg text-lg hover:opacity-90 transition-opacity shadow-lg flex items-center justify-center gap-2 mx-auto"
                   >
-                    <span className="mr-2">➕</span>
+                    <Plus className="h-5 w-5" />
                     Create Your First Book
                   </Button>
                 </div>
@@ -3756,11 +3874,16 @@ export default function Home() {
                     <Card 
                       key={transaction.id} 
                       className={`border border-border shadow-sm transition-shadow ${
-                        canEdit ? 'hover:shadow-md cursor-pointer' : canView ? 'cursor-default' : 'cursor-default'
+                        canView ? 'hover:shadow-md cursor-pointer' : 'cursor-default'
                       }`}
-                      onClick={() => {
+                      onClick={async () => {
                         if (canEdit) {
                           handleEditTransaction(transaction);
+                        } else if (currentUserRole === 'viewer') {
+                          // Viewers can click to view history
+                          setEditingTransaction(transaction);
+                          await fetchTransactionHistory(transaction.id);
+                          setIsHistoryDialogOpen(true);
                         }
                       }}
                     >
@@ -4693,7 +4816,7 @@ export default function Home() {
               />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => {
               setIsAddPartyDialogOpen(false);
               setNewPartyName("");
@@ -4752,7 +4875,7 @@ export default function Home() {
               />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => {
               setIsRenamePartyDialogOpen(false);
               setEditingParty("");
@@ -4841,8 +4964,7 @@ export default function Home() {
 
           <div className="space-y-4 pt-2 pb-4">
             {/* Transaction Type */}
-            <div className="space-y-2">
-              <Label>Transaction Type</Label>
+            <div>
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   type="button"
@@ -4945,8 +5067,8 @@ export default function Home() {
 
 
             {/* Party */}
-            <div className="space-y-2">
-              <Label htmlFor="party">Party (Optional)</Label>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="party" className="text-sm font-medium">Party (Optional)</Label>
               <Button
                 type="button"
                 variant="outline"
@@ -4964,8 +5086,8 @@ export default function Home() {
             </div>
 
             {/* Date */}
-            <div className="space-y-2">
-              <Label htmlFor="date">Date</Label>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="date" className="text-sm font-medium">Date</Label>
               <div className="relative">
                 <Input
                   id="date"
@@ -4994,7 +5116,7 @@ export default function Home() {
       {/* Edit Transaction Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
         setIsEditDialogOpen(open);
-          if (!open) {
+        if (!open) {
           // Reset form when closing edit dialog
           setEditingTransaction(null);
           setOriginalTransactionValues(null);
@@ -5012,7 +5134,12 @@ export default function Home() {
           <DialogHeader>
             <DialogDescription className="sr-only">Edit transaction details</DialogDescription>
             <div className="flex items-center gap-3">
-              <DialogTitle>Edit Transaction</DialogTitle>
+              <DialogTitle>
+                {(() => {
+                  const currentUserRole = bookRoles[selectedBookId || 0];
+                  return currentUserRole === 'viewer' ? 'Transaction Details' : 'Edit Transaction';
+                })()}
+              </DialogTitle>
               <Button
                 variant="outline"
                 size="sm"
@@ -5026,172 +5153,235 @@ export default function Home() {
           </DialogHeader>
 
           <div className="space-y-4 pt-2 pb-4">
-            {/* Transaction Type */}
-            <div className="space-y-2">
-              <Label>Transaction Type</Label>
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  type="button"
-                  variant={transactionType === "income" ? "default" : "outline"}
-                  className={`flex items-center justify-center gap-2 ${transactionType === "income" ? "bg-green-600 hover:bg-green-600 text-white" : ""}`}
-                    onClick={() => {
-                      setTransactionType("income");
-                    }}
-                >
-                  <ArrowUpCircle className="h-4 w-4" />
-                  Income
-                </Button>
-                <Button
-                  type="button"
-                  variant={transactionType === "expense" ? "default" : "outline"}
-                  className={`flex items-center justify-center gap-2 ${transactionType === "expense" ? "bg-red-600 hover:bg-red-600 text-white" : ""}`}
-                    onClick={() => {
-                      setTransactionType("expense");
-                    }}
-                >
-                  <ArrowDownCircle className="h-4 w-4" />
-                  Expense
-                </Button>
-              </div>
-            </div>
+            {(() => {
+              const currentUserRole = bookRoles[selectedBookId || 0];
+              const isViewer = currentUserRole === 'viewer';
+              
+              return (
+                <>
+                  {isViewer && (
+                    <div className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg mb-2">
+                      <p className="text-sm text-blue-800 dark:text-blue-200">
+                        ℹ️ You are viewing this transaction in read-only mode. You can view the history but cannot make changes.
+                      </p>
+                    </div>
+                  )}
+                  {/* Transaction Type */}
+                  <div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        variant={transactionType === "income" ? "default" : "outline"}
+                        className={`flex items-center justify-center gap-2 ${transactionType === "income" ? "bg-green-600 hover:bg-green-600 text-white" : ""}`}
+                        onClick={() => {
+                          if (!isViewer) {
+                            setTransactionType("income");
+                          }
+                        }}
+                        disabled={isViewer}
+                      >
+                        <ArrowUpCircle className="h-4 w-4" />
+                        Income
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={transactionType === "expense" ? "default" : "outline"}
+                        className={`flex items-center justify-center gap-2 ${transactionType === "expense" ? "bg-red-600 hover:bg-red-600 text-white" : ""}`}
+                        onClick={() => {
+                          if (!isViewer) {
+                            setTransactionType("expense");
+                          }
+                        }}
+                        disabled={isViewer}
+                      >
+                        <ArrowDownCircle className="h-4 w-4" />
+                        Expense
+                      </Button>
+                    </div>
+                  </div>
 
-            {/* Amount */}
-            <div className="space-y-2">
-              <Label htmlFor="editAmount">Amount</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg font-semibold text-muted-foreground">
-                  ₹
-                </span>
-                <Input
-                  id="editAmount"
-                  type="text"
-                  placeholder="0.00"
-                  inputMode="decimal"
-                  className="pl-8"
-                  value={formData.amount ? formatAmountDisplay(formData.amount, isAmountEditing) : ''}
-                  onFocus={() => setIsAmountEditing(true)}
-                  onChange={(e) => {
-                    let value = e.target.value;
-                    // Remove all formatting (commas) to get raw number
-                    value = parseIndianNumber(value);
-                    // Format and validate the input
-                    value = formatAmountForInput(value);
-                    
-                    // Check if amount exceeds max - prevent entering values above limit
-                    const numValue = parseFloat(value);
-                    if (value && !isNaN(numValue) && numValue > 10000000000) {
-                      toast.error('Maximum amount limit is ₹10,00,00,00,000');
-                      // Don't update the form data - keep the previous valid value
-                      return;
-                    }
-                    
-                    setFormData({ ...formData, amount: value });
-                  }}
-                  onBlur={(e) => {
-                    setIsAmountEditing(false);
-                    // Format on blur for better UX and enforce max limit
-                    let value = parseIndianNumber(e.target.value);
-                    if (value) {
-                      const numValue = parseFloat(value);
-                      if (!isNaN(numValue)) {
-                        // Enforce maximum limit - if exceeds, keep last valid value or clear
-                        if (numValue > 10000000000) {
-                          toast.error('Maximum amount limit is ₹10,00,00,00,000');
-                          // Don't update - keep the last valid value that was in formData
+                  {/* Amount */}
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="editAmount" className="text-sm font-medium">Amount</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg font-semibold text-muted-foreground">
+                        ₹
+                      </span>
+                      <Input
+                        id="editAmount"
+                        type="text"
+                        placeholder="0.00"
+                        inputMode="decimal"
+                        className="pl-8"
+                        value={formData.amount ? formatAmountDisplay(formData.amount, isAmountEditing) : ''}
+                        onFocus={() => {
+                          if (!isViewer) {
+                            setIsAmountEditing(true);
+                          }
+                        }}
+                        onChange={(e) => {
+                          if (isViewer) return;
+                          let value = e.target.value;
+                          // Remove all formatting (commas) to get raw number
+                          value = parseIndianNumber(value);
+                          // Format and validate the input
+                          value = formatAmountForInput(value);
+                          
+                          // Check if amount exceeds max - prevent entering values above limit
+                          const numValue = parseFloat(value);
+                          if (value && !isNaN(numValue) && numValue > 10000000000) {
+                            toast.error('Maximum amount limit is ₹10,00,00,00,000');
+                            // Don't update the form data - keep the previous valid value
+                            return;
+                          }
+                          
+                          setFormData({ ...formData, amount: value });
+                        }}
+                        onBlur={(e) => {
+                          if (isViewer) return;
+                          setIsAmountEditing(false);
+                          // Format on blur for better UX and enforce max limit
+                          let value = parseIndianNumber(e.target.value);
+                          if (value) {
+                            const numValue = parseFloat(value);
+                            if (!isNaN(numValue)) {
+                              // Enforce maximum limit - if exceeds, keep last valid value or clear
+                              if (numValue > 10000000000) {
+                                toast.error('Maximum amount limit is ₹10,00,00,00,000');
+                                // Don't update - keep the last valid value that was in formData
+                                return;
+                              }
+                              setFormData({ ...formData, amount: value });
+                            }
+                          }
+                        }}
+                        disabled={isViewer}
+                        readOnly={isViewer}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="editDescription" className="text-sm font-medium">Description</Label>
+                    <Input
+                      id="editDescription"
+                      placeholder="Enter description here"
+                      value={formData.description}
+                      maxLength={1000}
+                      onChange={(e) => {
+                        if (isViewer) return;
+                        const value = e.target.value;
+                        // Prevent entering more than 1000 characters
+                        if (value.length > 1000) {
+                          toast.error('Description cannot exceed 1000 characters');
                           return;
                         }
-                        setFormData({ ...formData, amount: value });
-                      }
-                    }
-                  }}
-                />
-              </div>
-            </div>
+                        setFormData({ ...formData, description: value });
+                      }}
+                      disabled={isViewer}
+                      readOnly={isViewer}
+                    />
+                  </div>
 
-            {/* Description */}
-            <div className="space-y-2">
-              <Label htmlFor="editDescription">Description</Label>
-              <Input
-                id="editDescription"
-                placeholder="Enter description here"
-                value={formData.description}
-                maxLength={1000}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  // Prevent entering more than 1000 characters
-                  if (value.length > 1000) {
-                    toast.error('Description cannot exceed 1000 characters');
-                    return;
-                  }
-                  setFormData({ ...formData, description: value });
-                }}
-              />
-            </div>
+                  {/* Party */}
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="editParty" className="text-sm font-medium">Party (Optional)</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full justify-between hover:text-inherit font-normal"
+                      onClick={() => {
+                        if (!isViewer) {
+                          setPartySelectorContext("edit");
+                          setIsPartySelectorOpen(true);
+                        }
+                      }}
+                      disabled={isViewer}
+                    >
+                      <span className={`${!formData.party ? "text-muted-foreground hover:text-muted-foreground" : "hover:text-foreground"} font-normal`}>
+                        {formData.party || "None"}
+                      </span>
+                      <ChevronDown className="h-4 w-4 opacity-50" />
+                    </Button>
+                  </div>
 
-            {/* Party */}
-            <div className="space-y-2">
-              <Label htmlFor="editParty">Party (Optional)</Label>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full justify-between hover:text-inherit font-normal"
-                onClick={() => {
-                  setPartySelectorContext("edit");
-                  setIsPartySelectorOpen(true);
-                }}
-              >
-                <span className={`${!formData.party ? "text-muted-foreground hover:text-muted-foreground" : "hover:text-foreground"} font-normal`}>
-                  {formData.party || "None"}
-                </span>
-                <ChevronDown className="h-4 w-4 opacity-50" />
-              </Button>
-            </div>
-
-            {/* Date */}
-            <div className="space-y-2">
-              <Label htmlFor="editDate">Date</Label>
-              <div className="relative">
-                <Input
-                  id="editDate"
-                  type="date"
-                  value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                  onClick={(e) => {
-                    const input = e.currentTarget;
-                    if (input && 'showPicker' in input) {
-                      (input as any).showPicker();
-                    }
-                  }}
-                  className="w-full cursor-pointer"
-                  max={getISTDate().toISOString().split("T")[0]}
-                />
-              </div>
-            </div>
+                  {/* Date */}
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="editDate" className="text-sm font-medium">Date</Label>
+                    <div className="relative">
+                      <Input
+                        id="editDate"
+                        type="date"
+                        value={formData.date}
+                        onChange={(e) => {
+                          if (!isViewer) {
+                            setFormData({ ...formData, date: e.target.value });
+                          }
+                        }}
+                        onClick={(e) => {
+                          if (isViewer) return;
+                          const input = e.currentTarget;
+                          if (input && 'showPicker' in input) {
+                            (input as any).showPicker();
+                          }
+                        }}
+                        className="w-full cursor-pointer"
+                        max={getISTDate().toISOString().split("T")[0]}
+                        disabled={isViewer}
+                        readOnly={isViewer}
+                      />
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
           <DialogFooter className="flex flex-col gap-2">
-            <Button 
-              onClick={handleUpdateTransaction} 
-              className="w-full"
-              disabled={!hasTransactionChanges}
-            >
-              Update
-            </Button>
             {(() => {
               const currentUserRole = bookRoles[selectedBookId || 0];
+              const isViewer = currentUserRole === 'viewer';
               const canDelete = currentUserRole === 'owner' || currentUserRole === 'admin';
               
-              if (!canDelete) return null;
+              // Viewers can only view, not update or delete
+              if (isViewer) {
+                return (
+                  <Button 
+                    variant="outline"
+                    onClick={() => {
+                      setIsEditDialogOpen(false);
+                      setIsHistoryDialogOpen(true);
+                    }}
+                    className="w-full"
+                  >
+                    <History className="h-4 w-4 mr-2" />
+                    View History
+                  </Button>
+                );
+              }
               
+              // Non-viewers can update and delete (if permitted)
               return (
-                <Button 
-                  variant="outline"
-                  className="w-full text-red-600 hover:bg-red-50 hover:text-red-700"
-                  onClick={() => setIsDeleteConfirmOpen(true)}
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
-                </Button>
+                <>
+                  <Button 
+                    onClick={handleUpdateTransaction} 
+                    className="w-full"
+                    disabled={!hasTransactionChanges}
+                  >
+                    Update
+                  </Button>
+                  {canDelete && (
+                    <Button 
+                      variant="outline"
+                      className="w-full text-red-600 hover:bg-red-50 hover:text-red-700"
+                      onClick={() => setIsDeleteConfirmOpen(true)}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete
+                    </Button>
+                  )}
+                </>
               );
             })()}
           </DialogFooter>
@@ -5434,7 +5624,7 @@ export default function Home() {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label htmlFor="renameBookName">Book Name</Label>
               <Input
                 id="renameBookName"
@@ -5460,7 +5650,7 @@ export default function Home() {
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button 
               variant="outline" 
               className="bg-gray-100 hover:bg-gray-200"
@@ -5501,7 +5691,7 @@ export default function Home() {
           </DialogHeader>
           
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label htmlFor="deleteBookConfirmation">Book Name</Label>
               <Input
                 id="deleteBookConfirmation"
@@ -5562,7 +5752,7 @@ export default function Home() {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label htmlFor="bookName">Book Name</Label>
               <Input
                 id="bookName"
@@ -5588,7 +5778,7 @@ export default function Home() {
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button 
               variant="outline" 
               className="bg-gray-100 hover:bg-gray-200" 
@@ -5709,9 +5899,9 @@ export default function Home() {
                               {activity.description}
                             </p>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <span>{activity.user_name || activity.user_email.split('@')[0]}</span>
-                              <span>•</span>
-                              <span>{dateTimeString}</span>
+                              <span className="font-medium text-foreground/80">{formatUserName(activity.user_name, activity.user_email)}</span>
+                              <span className="text-muted-foreground/50">•</span>
+                              <span className="text-muted-foreground">{dateTimeString}</span>
                             </div>
                           </div>
                         </div>
@@ -5782,6 +5972,10 @@ export default function Home() {
                         viewer: "bg-amber-50 dark:bg-amber-950/30 border border-amber-500 text-amber-700 dark:text-amber-400",
                       };
                       
+                      // Check if current user is the only owner
+                      const ownerCount = bookMembers.filter(m => m.role === 'owner').length;
+                      const isOnlyOwner = isCurrentUser && member.role === 'owner' && ownerCount === 1;
+                      
                       return (
                         <div key={member.email} className="p-4 border-b border-border last:border-b-0 relative">
                           <div className="flex items-start justify-between gap-3">
@@ -5801,73 +5995,149 @@ export default function Home() {
                                 <p className="text-sm text-muted-foreground truncate">{member.email}</p>
                               </div>
                             </div>
-                            {!isCurrentUser && (() => {
-                              // Only show menu if current user is owner
-                              // And if editing an owner, only owners can do that
-                              const currentUserRole = bookRoles[selectedBookId || 0];
-                              const canEditRole = currentUserRole === 'owner';
-                              const canEditOwner = canEditRole; // Only owners can edit owners
-                              const canEditThisMember = member.role === 'owner' ? canEditOwner : canEditRole;
+                            {(() => {
+                              // Show menu for:
+                              // 1. Other members (if current user is owner/admin)
+                              // 2. Current user themselves (to allow self-management)
+                              // BUT: Hide menu if current user is the only owner (to prevent leaving without owner)
                               
-                              if (!canEditThisMember) return null;
+                              if (isOnlyOwner) return null; // Don't show menu for only owner
                               
-                              return (
-                                <div className="relative flex-shrink-0">
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8"
-                                    data-member-menu-button
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      setOpenMemberMenu(openMemberMenu === member.email ? null : member.email);
-                                    }}
-                                    onMouseDown={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                    }}
-                                  >
-                                    <MoreVertical className="h-4 w-4" />
-                                  </Button>
-                                  {openMemberMenu === member.email && (
-                                    <div 
-                                      data-member-menu
-                                      className="absolute right-0 top-full mt-1 bg-background border border-border rounded-lg shadow-lg z-50 min-w-[140px] overflow-visible"
-                                      onClick={(e) => e.stopPropagation()}
-                                      onMouseDown={(e) => e.stopPropagation()}
+                              if (isCurrentUser) {
+                                // Current user managing themselves
+                                // Viewers cannot change their role, so hide the option
+                                const currentUserRole = member.role;
+                                const canChangeOwnRole = currentUserRole !== 'viewer';
+                                
+                                return (
+                                  <div className="relative flex-shrink-0">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8"
+                                      data-member-menu-button
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setOpenMemberMenu(openMemberMenu === member.email ? null : member.email);
+                                      }}
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                      }}
                                     >
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setOpenMemberMenu(null);
-                                          setEditingMemberEmail(member.email);
-                                          setEditingMemberName(member.name || member.email.split('@')[0]);
-                                          setSelectedRole(member.role as "owner" | "admin" | "editor" | "viewer");
-                                          setIsEditRoleModalOpen(true);
-                                        }}
-                                        className="w-full text-left px-4 py-2 hover:bg-accent transition-colors flex items-center gap-2 rounded-t-lg text-foreground font-normal"
+                                      <MoreVertical className="h-4 w-4" />
+                                    </Button>
+                                    {openMemberMenu === member.email && (
+                                      <div 
+                                        data-member-menu
+                                        className="absolute right-0 top-full mt-1 bg-background border border-border rounded-lg shadow-lg z-50 min-w-[140px] overflow-visible"
+                                        onClick={(e) => e.stopPropagation()}
+                                        onMouseDown={(e) => e.stopPropagation()}
                                       >
-                                        <Pencil className="h-4 w-4" />
-                                        Edit Role
-                                      </button>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setOpenMemberMenu(null);
-                                          setMemberToDelete(member.email);
-                                          setIsDeleteMemberConfirmOpen(true);
-                                        }}
-                                        className="w-full text-left px-4 py-2 hover:bg-accent transition-colors flex items-center gap-2 rounded-b-lg text-red-600"
+                                        {canChangeOwnRole && (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setOpenMemberMenu(null);
+                                              setEditingMemberEmail(member.email);
+                                              setEditingMemberName(member.name || member.email.split('@')[0]);
+                                              setSelectedRole(member.role as "owner" | "admin" | "editor" | "viewer");
+                                              setIsEditRoleModalOpen(true);
+                                            }}
+                                            className="w-full text-left px-4 py-2 hover:bg-accent transition-colors flex items-center gap-2 rounded-t-lg text-foreground font-normal"
+                                          >
+                                            <Pencil className="h-4 w-4" />
+                                            Edit Role
+                                          </button>
+                                        )}
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setOpenMemberMenu(null);
+                                            setMemberToDelete(member.email);
+                                            setIsDeleteMemberConfirmOpen(true);
+                                          }}
+                                          className={`w-full text-left px-4 py-2 hover:bg-accent transition-colors flex items-center gap-2 ${canChangeOwnRole ? 'rounded-b-lg' : 'rounded-lg'} text-red-600`}
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                          Leave
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              } else {
+                                // Managing other members
+                                const currentUserRole = bookRoles[selectedBookId || 0];
+                                const canManageMembers = currentUserRole === 'owner' || currentUserRole === 'admin';
+                                const canEditRole = currentUserRole === 'owner';
+                                const canEditOwner = canEditRole; // Only owners can edit owners
+                                const canEditThisMember = member.role === 'owner' ? canEditOwner : canEditRole;
+                                
+                                if (!canManageMembers) return null;
+                                
+                                return (
+                                  <div className="relative flex-shrink-0">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8"
+                                      data-member-menu-button
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setOpenMemberMenu(openMemberMenu === member.email ? null : member.email);
+                                      }}
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                      }}
+                                    >
+                                      <MoreVertical className="h-4 w-4" />
+                                    </Button>
+                                    {openMemberMenu === member.email && (
+                                      <div 
+                                        data-member-menu
+                                        className="absolute right-0 top-full mt-1 bg-background border border-border rounded-lg shadow-lg z-50 min-w-[140px] overflow-visible"
+                                        onClick={(e) => e.stopPropagation()}
+                                        onMouseDown={(e) => e.stopPropagation()}
                                       >
-                                        <Trash2 className="h-4 w-4" />
-                                        Remove
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              );
+                                        {canEditThisMember && (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setOpenMemberMenu(null);
+                                              setEditingMemberEmail(member.email);
+                                              setEditingMemberName(member.name || member.email.split('@')[0]);
+                                              setSelectedRole(member.role as "owner" | "admin" | "editor" | "viewer");
+                                              setIsEditRoleModalOpen(true);
+                                            }}
+                                            className="w-full text-left px-4 py-2 hover:bg-accent transition-colors flex items-center gap-2 rounded-t-lg text-foreground font-normal"
+                                          >
+                                            <Pencil className="h-4 w-4" />
+                                            Edit Role
+                                          </button>
+                                        )}
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setOpenMemberMenu(null);
+                                            setMemberToDelete(member.email);
+                                            setIsDeleteMemberConfirmOpen(true);
+                                          }}
+                                          className={`w-full text-left px-4 py-2 hover:bg-accent transition-colors flex items-center gap-2 ${canEditThisMember ? 'rounded-b-lg' : 'rounded-lg'} text-red-600`}
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                          Remove
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }
                             })()}
                           </div>
                         </div>
@@ -5918,7 +6188,7 @@ export default function Home() {
             <div className="flex flex-col gap-2">
               <Label htmlFor="newMemberEmail" className="text-foreground text-sm font-medium">Email Address</Label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground stroke-current pointer-events-none" strokeWidth={2} />
                 <Input
                   id="newMemberEmail"
                   type="email"
@@ -6024,7 +6294,7 @@ export default function Home() {
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button 
               variant="outline" 
               onClick={() => setIsAddMemberModalOpen(false)}
@@ -6074,86 +6344,146 @@ export default function Home() {
             
             <div className="space-y-3">
               <Label className="text-foreground">Select Role</Label>
-              {isLastOwner && (
-                <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
-                  <p className="text-sm text-amber-800 dark:text-amber-200">
-                    ⚠️ This is the last owner. You cannot change their role to a non-owner role. There must be at least one owner.
-                  </p>
-                </div>
-              )}
-              <div className="grid grid-cols-4 gap-2 mt-1">
-                <button
-                  type="button"
-                  onClick={() => setSelectedRole("owner")}
-                  className={`p-2 rounded-lg border-2 transition-all text-center ${
-                    selectedRole === "owner"
-                      ? "border-purple-500 bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400"
-                      : "border-border hover:border-purple-300 text-purple-600 dark:text-purple-400"
-                  }`}
-                >
-                  <div className="font-semibold text-xs">Owner</div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isLastOwner) {
-                      toast.error("Cannot change the last owner's role");
-                      return;
-                    }
-                    setSelectedRole("admin");
-                  }}
-                  disabled={isLastOwner}
-                  className={`p-2 rounded-lg border-2 transition-all text-center ${
-                    selectedRole === "admin"
-                      ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400"
-                      : isLastOwner
-                      ? "border-border opacity-50 cursor-not-allowed text-muted-foreground"
-                      : "border-border hover:border-blue-300 text-blue-600 dark:text-blue-400"
-                  }`}
-                >
-                  <div className="font-semibold text-xs">Admin</div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isLastOwner) {
-                      toast.error("Cannot change the last owner's role");
-                      return;
-                    }
-                    setSelectedRole("editor");
-                  }}
-                  disabled={isLastOwner}
-                  className={`p-2 rounded-lg border-2 transition-all text-center ${
-                    selectedRole === "editor"
-                      ? "border-green-500 bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400"
-                      : isLastOwner
-                      ? "border-border opacity-50 cursor-not-allowed text-muted-foreground"
-                      : "border-border hover:border-green-300 text-green-600 dark:text-green-400"
-                  }`}
-                >
-                  <div className="font-semibold text-xs">Editor</div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isLastOwner) {
-                      toast.error("Cannot change the last owner's role");
-                      return;
-                    }
-                    setSelectedRole("viewer");
-                  }}
-                  disabled={isLastOwner}
-                  className={`p-2 rounded-lg border-2 transition-all text-center ${
-                    selectedRole === "viewer"
-                      ? "border-amber-500 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400"
-                      : isLastOwner
-                      ? "border-border opacity-50 cursor-not-allowed text-muted-foreground"
-                      : "border-border hover:border-amber-300 text-amber-600 dark:text-amber-400"
-                  }`}
-                >
-                  <div className="font-semibold text-xs">Viewer</div>
-                </button>
-              </div>
+              {(() => {
+                // Check if this is a self-change
+                const isSelfChange = editingMemberEmail === user?.email;
+                // Get current member's role
+                const currentMember = bookMembers.find(m => m.email === editingMemberEmail);
+                const currentMemberRole = currentMember?.role || selectedRole;
+                
+                // Role hierarchy: Owner (4) > Admin (3) > Editor (2) > Viewer (1)
+                const roleHierarchy: Record<string, number> = {
+                  owner: 4,
+                  admin: 3,
+                  editor: 2,
+                  viewer: 1
+                };
+                
+                const currentRoleLevel = roleHierarchy[currentMemberRole] || 1;
+                
+                // For self-change, disable roles superior to current role
+                const isOwnerDisabled = isSelfChange && roleHierarchy.owner > currentRoleLevel;
+                const isAdminDisabled = isSelfChange && roleHierarchy.admin > currentRoleLevel;
+                const isEditorDisabled = isSelfChange && roleHierarchy.editor > currentRoleLevel;
+                const isViewerDisabled = isSelfChange && roleHierarchy.viewer > currentRoleLevel;
+                
+                return (
+                  <>
+                    {isLastOwner && (
+                      <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+                        <p className="text-sm text-amber-800 dark:text-amber-200">
+                          ⚠️ This is the last owner. You cannot change their role to a non-owner role. There must be at least one owner.
+                        </p>
+                      </div>
+                    )}
+                    {isSelfChange && (
+                      <div className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+                        <p className="text-sm text-blue-800 dark:text-blue-200">
+                          ℹ️ You can only change your role to your current role or a lower role. You cannot promote yourself.
+                        </p>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-4 gap-2 mt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isLastOwner) {
+                            toast.error("Cannot change the last owner's role");
+                            return;
+                          }
+                          if (isOwnerDisabled) {
+                            toast.error("You cannot promote yourself to a higher role");
+                            return;
+                          }
+                          setSelectedRole("owner");
+                        }}
+                        disabled={isLastOwner || isOwnerDisabled}
+                        className={`p-2 rounded-lg border-2 transition-all text-center ${
+                          selectedRole === "owner"
+                            ? "border-purple-500 bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400"
+                            : (isLastOwner || isOwnerDisabled)
+                            ? "border-border opacity-50 cursor-not-allowed text-muted-foreground"
+                            : "border-border hover:border-purple-300 text-purple-600 dark:text-purple-400"
+                        }`}
+                      >
+                        <div className="font-semibold text-xs">Owner</div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isLastOwner) {
+                            toast.error("Cannot change the last owner's role");
+                            return;
+                          }
+                          if (isAdminDisabled) {
+                            toast.error("You cannot promote yourself to a higher role");
+                            return;
+                          }
+                          setSelectedRole("admin");
+                        }}
+                        disabled={isLastOwner || isAdminDisabled}
+                        className={`p-2 rounded-lg border-2 transition-all text-center ${
+                          selectedRole === "admin"
+                            ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400"
+                            : (isLastOwner || isAdminDisabled)
+                            ? "border-border opacity-50 cursor-not-allowed text-muted-foreground"
+                            : "border-border hover:border-blue-300 text-blue-600 dark:text-blue-400"
+                        }`}
+                      >
+                        <div className="font-semibold text-xs">Admin</div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isLastOwner) {
+                            toast.error("Cannot change the last owner's role");
+                            return;
+                          }
+                          if (isEditorDisabled) {
+                            toast.error("You cannot promote yourself to a higher role");
+                            return;
+                          }
+                          setSelectedRole("editor");
+                        }}
+                        disabled={isLastOwner || isEditorDisabled}
+                        className={`p-2 rounded-lg border-2 transition-all text-center ${
+                          selectedRole === "editor"
+                            ? "border-green-500 bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400"
+                            : (isLastOwner || isEditorDisabled)
+                            ? "border-border opacity-50 cursor-not-allowed text-muted-foreground"
+                            : "border-border hover:border-green-300 text-green-600 dark:text-green-400"
+                        }`}
+                      >
+                        <div className="font-semibold text-xs">Editor</div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isLastOwner) {
+                            toast.error("Cannot change the last owner's role");
+                            return;
+                          }
+                          if (isViewerDisabled) {
+                            toast.error("You cannot promote yourself to a higher role");
+                            return;
+                          }
+                          setSelectedRole("viewer");
+                        }}
+                        disabled={isLastOwner || isViewerDisabled}
+                        className={`p-2 rounded-lg border-2 transition-all text-center ${
+                          selectedRole === "viewer"
+                            ? "border-amber-500 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400"
+                            : (isLastOwner || isViewerDisabled)
+                            ? "border-border opacity-50 cursor-not-allowed text-muted-foreground"
+                            : "border-border hover:border-amber-300 text-amber-600 dark:text-amber-400"
+                        }`}
+                      >
+                        <div className="font-semibold text-xs">Viewer</div>
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
 
               {/* Permissions Display */}
               {selectedRole && (
@@ -6200,7 +6530,7 @@ export default function Home() {
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button 
               variant="outline" 
               onClick={() => setIsEditRoleModalOpen(false)}
@@ -6229,9 +6559,11 @@ export default function Home() {
       }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Remove Member</DialogTitle>
+            <DialogTitle>{memberToDelete === profileData.email ? "Leave Book" : "Remove Member"}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to remove this member from the book? They will lose access to all transactions in this book.
+              {memberToDelete === profileData.email 
+                ? "Are you sure you want to leave this book? You will lose access to all transactions in this book."
+                : "Are you sure you want to remove this member from the book? They will lose access to all transactions in this book."}
             </DialogDescription>
           </DialogHeader>
           
@@ -6254,7 +6586,7 @@ export default function Home() {
                 }
               }}
             >
-              Remove
+              {memberToDelete === profileData.email ? "Leave" : "Remove"}
             </Button>
           </DialogFooter>
         </DialogContent>

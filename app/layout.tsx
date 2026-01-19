@@ -6,13 +6,17 @@ import { Toaster } from "@/components/ui/sonner";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Family Balance Manager",
+  title: "CashMate",
   description: "Centralized app to track shared family balance - add income and expenses, see who added each transaction",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/cashmate_wallet_logo.png",
+    apple: "/cashmate_wallet_logo.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Family Expenses",
+    title: "CashMate",
   },
 };
 
