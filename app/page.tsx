@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Filter, ArrowDown, ArrowUp, ArrowDownCircle, ArrowUpCircle, Home as HomeIcon, BarChart3, Wallet, User, Users, Search, Calendar, ChevronDown, History, Trash2, MoreVertical, Pencil, Settings as SettingsIcon, Bell, Shield, HelpCircle, Info, ArrowLeft, Mail, X, CalendarDays, LogOut, Activity, Lock } from "lucide-react";
+import { Plus, Filter, ArrowDown, ArrowUp, ArrowDownCircle, ArrowUpCircle, Home as HomeIcon, BarChart3, Wallet, User, Users, Search, Calendar, ChevronDown, History, Trash2, MoreVertical, Pencil, Settings as SettingsIcon, Bell, Shield, HelpCircle, Info, ArrowLeft, Mail, X, CalendarDays, LogOut, Activity, Lock, Eye, EyeOff } from "lucide-react";
 import LandingPage from "@/components/landing-page";
 
 // Categories removed - using initials/avatars instead
@@ -165,43 +165,19 @@ export default function Home() {
     created_at: string;
   }>>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
-  const [browserNotificationsEnabled, setBrowserNotificationsEnabled] = useState(false);
   
-  // Check if it's first launch or PWA launch (not a manual refresh)
+  // Check if it's first launch or PWA launch
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    
-    // Check if this is a page reload/refresh (not a fresh app launch)
-    const navEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
-    const isRefresh = navEntry?.type === 'reload' ||
-                     (performance.navigation && (performance.navigation as any).type === 1);
-    
-    // If it's a refresh, don't show landing page
-    if (isRefresh) {
-      setShowLandingPage(false);
-      return;
-    }
     
     // Check if app is launched as PWA (standalone mode)
     const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
                   (window.navigator as any).standalone === true ||
                   document.referrer.includes('android-app://');
     
-    // Check if PWA was already opened in this session (to avoid showing on refresh)
-    const pwaSessionKey = 'pwaSessionStarted';
-    const pwaSessionStarted = sessionStorage.getItem(pwaSessionKey);
-    
-    // If it's a PWA and not already started in this session, show landing page
-    if (isPWA && !pwaSessionStarted) {
+    // If it's a PWA, always show landing page
+    if (isPWA) {
       setShowLandingPage(true);
-      sessionStorage.setItem(pwaSessionKey, 'true');
-      return;
-    }
-    
-    // If PWA session already started, don't show landing page
-    if (isPWA && pwaSessionStarted) {
-      setShowLandingPage(false);
       return;
     }
     
@@ -232,90 +208,6 @@ export default function Home() {
       setShowLandingPage(false);
     }
   }, []);
-
-  // Check and initialize browser notification permission
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      setNotificationPermission(Notification.permission);
-      
-      // Check if user has previously enabled notifications
-      const saved = localStorage.getItem('browserNotificationsEnabled');
-      if (saved === 'true' && Notification.permission === 'granted') {
-        setBrowserNotificationsEnabled(true);
-      }
-    }
-  }, []);
-
-  // Request notification permission when user enables it
-  const requestNotificationPermission = async () => {
-    if (typeof window === 'undefined' || !('Notification' in window)) {
-      toast.error('Browser notifications are not supported in this browser');
-      return false;
-    }
-
-    if (Notification.permission === 'granted') {
-      setBrowserNotificationsEnabled(true);
-      localStorage.setItem('browserNotificationsEnabled', 'true');
-      toast.success('Browser notifications enabled');
-      return true;
-    }
-
-    if (Notification.permission === 'denied') {
-      toast.error('Notification permission was denied. Please enable it in your browser settings.');
-      return false;
-    }
-
-    // Request permission
-    const permission = await Notification.requestPermission();
-    setNotificationPermission(permission);
-
-    if (permission === 'granted') {
-      setBrowserNotificationsEnabled(true);
-      localStorage.setItem('browserNotificationsEnabled', 'true');
-      toast.success('Browser notifications enabled');
-      return true;
-    } else {
-      toast.error('Notification permission denied');
-      return false;
-    }
-  };
-
-  // Show browser notification
-  const showBrowserNotification = (message: string, activityId?: number) => {
-    if (!browserNotificationsEnabled || notificationPermission !== 'granted') {
-      return;
-    }
-
-    if (typeof window === 'undefined' || !('Notification' in window)) {
-      return;
-    }
-
-    try {
-      const notification = new Notification('CashMate Activity', {
-        body: message,
-        icon: '/cashmate_wallet_logo.png',
-        badge: '/cashmate_wallet_logo.png',
-        tag: `activity-${activityId || Date.now()}`,
-        requireInteraction: false,
-      });
-
-      notification.onclick = () => {
-        window.focus();
-        if (activityId) {
-          setIsActivityModalOpen(true);
-          fetchActivities();
-        }
-        notification.close();
-      };
-
-      // Auto-close after 5 seconds
-      setTimeout(() => {
-        notification.close();
-      }, 5000);
-    } catch (error) {
-      console.error('Error showing browser notification:', error);
-    }
-  };
 
   // Check authentication on mount
   useEffect(() => {
@@ -436,12 +328,20 @@ export default function Home() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [isPasswordChangeModalOpen, setIsPasswordChangeModalOpen] = useState(false);
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [passwordData, setPasswordData] = useState({
-    currentPassword: "",
+    oldPassword: "",
     newPassword: "",
     confirmPassword: "",
   });
+  const [showPasswords, setShowPasswords] = useState({
+    oldPassword: false,
+    newPassword: false,
+    confirmPassword: false,
+  });
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<'default' | 'granted' | 'denied'>('default');
+  const [browserNotificationsEnabled, setBrowserNotificationsEnabled] = useState(false);
   const [profileData, setProfileData] = useState({
     name: "Chinmay Kapopara",
     email: user?.email || "kapopara.king@gmail.com",
@@ -463,6 +363,43 @@ export default function Home() {
     return istTime.toISOString().split("T")[0];
   };
 
+  // Helper to convert YYYY-MM-DD to dd-mm-yyyy
+  const formatDateToDDMMYYYY = (dateString: string): string => {
+    if (!dateString) return "";
+    const [year, month, day] = dateString.split("-");
+    return `${day}-${month}-${year}`;
+  };
+
+  // Helper to convert dd-mm-yyyy to YYYY-MM-DD
+  const parseDDMMYYYYToISO = (dateString: string): string => {
+    if (!dateString) return "";
+    // Remove any non-digit characters except dashes
+    const cleaned = dateString.replace(/[^\d-]/g, "");
+    const parts = cleaned.split("-").filter(p => p.length > 0);
+    if (parts.length === 3) {
+      const [day, month, year] = parts;
+      // Validate and pad
+      const d = day.padStart(2, "0");
+      const m = month.padStart(2, "0");
+      const y = year;
+      // Validate that we have a complete date
+      if (d.length === 2 && m.length === 2 && y.length === 4) {
+        // Validate date
+        const date = new Date(`${y}-${m}-${d}`);
+        if (date instanceof Date && !isNaN(date.getTime())) {
+          // Check if the date components match (to catch invalid dates like 31-02-2024)
+          const checkDay = date.getDate().toString().padStart(2, "0");
+          const checkMonth = (date.getMonth() + 1).toString().padStart(2, "0");
+          const checkYear = date.getFullYear().toString();
+          if (checkDay === d && checkMonth === m && checkYear === y) {
+            return `${y}-${m}-${d}`;
+          }
+        }
+      }
+    }
+    return ""; // Return empty string if parsing fails
+  };
+
   // Helper function to get current user's name
   const getCurrentUserName = () => {
     return user?.user_metadata?.name || profileData.name || user?.email?.split('@')[0] || "User";
@@ -478,14 +415,10 @@ export default function Home() {
   ) => {
     // Use provided bookId or fall back to selectedBookId
     const targetBookId = bookId || selectedBookId;
-    if (!targetBookId || !user?.email) {
-      console.warn('Cannot log activity: missing bookId or user email', { targetBookId, userEmail: user?.email });
-      return;
-    }
+    if (!targetBookId || !user?.email) return;
 
     try {
-      console.log('Logging activity:', { activityType, description, targetBookId, userEmail: user.email });
-      const { error, data } = await supabase.rpc('log_activity', {
+      await supabase.rpc('log_activity', {
         p_book_id: targetBookId,
         p_user_email: user.email,
         p_user_name: getCurrentUserName(),
@@ -493,15 +426,131 @@ export default function Home() {
         p_description: description,
         p_metadata: metadata || null
       });
-      
-      if (error) {
-        console.error('Error logging activity:', error);
-      } else {
-        console.log('Activity logged successfully:', { activityType, targetBookId });
-      }
     } catch (error) {
       console.error('Error logging activity:', error);
       // Don't show error to user, activity logging is non-critical
+    }
+  };
+
+  // Handle password change with old password verification
+  const handlePasswordChange = async () => {
+    if (!passwordData.oldPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+      toast.error("Please fill in all fields");
+      return;
+    }
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      toast.error("New passwords do not match");
+      return;
+    }
+
+    if (passwordData.newPassword.length < 6) {
+      toast.error("Password must be at least 6 characters long");
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      // First, verify old password by attempting to sign in
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: user?.email || '',
+        password: passwordData.oldPassword,
+      });
+
+      if (signInError) {
+        // Check if it's an invalid credentials error
+        if (signInError.message?.toLowerCase().includes('invalid') || 
+            signInError.message?.toLowerCase().includes('incorrect') ||
+            signInError.message?.toLowerCase().includes('wrong')) {
+          toast.error("Current password is incorrect");
+        } else {
+          toast.error(signInError.message || "Failed to verify current password");
+        }
+        setIsChangingPassword(false);
+        return;
+      }
+
+      // If old password is correct, update to new password
+      const { error } = await supabase.auth.updateUser({
+        password: passwordData.newPassword
+      });
+
+      if (error) {
+        toast.error(error.message || 'Failed to change password. Please try again.');
+        setIsChangingPassword(false);
+        return;
+      }
+
+      toast.success("Password changed successfully");
+      setIsPasswordChangeModalOpen(false);
+      setPasswordData({
+        oldPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+    } catch (error: any) {
+      // Only log unexpected errors
+      if (error.message && !error.message.includes('incorrect') && !error.message.includes('Current password')) {
+        console.error('Unexpected error changing password:', error);
+      }
+      toast.error(error.message || 'Failed to change password. Please try again.');
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
+  // Request notification permission
+  const requestNotificationPermission = async () => {
+    if (!('Notification' in window)) {
+      toast.error('Your browser does not support notifications');
+      return;
+    }
+
+    try {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+      
+      if (permission === 'granted') {
+        setBrowserNotificationsEnabled(true);
+        localStorage.setItem('browserNotificationsEnabled', 'true');
+        localStorage.setItem('notificationPermission', permission);
+        toast.success('Browser notifications enabled');
+      } else if (permission === 'denied') {
+        setBrowserNotificationsEnabled(false);
+        localStorage.setItem('browserNotificationsEnabled', 'false');
+        localStorage.setItem('notificationPermission', permission);
+        toast.error('Notification permission was denied. Please enable it in your browser settings.');
+      } else {
+        setBrowserNotificationsEnabled(false);
+        localStorage.setItem('browserNotificationsEnabled', 'false');
+        localStorage.setItem('notificationPermission', permission);
+      }
+    } catch (error) {
+      console.error('Error requesting notification permission:', error);
+      toast.error('Failed to request notification permission');
+    }
+  };
+
+  // Show browser notification
+  const showBrowserNotification = (message: string, activityId?: number) => {
+    if (!('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+    if (!browserNotificationsEnabled) return;
+
+    try {
+      const notification = new Notification('CashMate', {
+        body: message,
+        icon: '/cashmate_wallet_logo.png',
+        badge: '/cashmate_wallet_logo.png',
+        tag: activityId?.toString(),
+      });
+
+      notification.onclick = () => {
+        window.focus();
+        notification.close();
+      };
+    } catch (error) {
+      console.error('Error showing browser notification:', error);
     }
   };
 
@@ -865,49 +914,6 @@ export default function Home() {
     }
   };
 
-  // Handle password change
-  const handlePasswordChange = async () => {
-    if (!passwordData.newPassword || !passwordData.confirmPassword) {
-      toast.error("Please fill in all fields");
-      return;
-    }
-
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      toast.error("New passwords do not match");
-      return;
-    }
-
-    if (passwordData.newPassword.length < 6) {
-      toast.error("Password must be at least 6 characters long");
-      return;
-    }
-
-    setIsChangingPassword(true);
-    try {
-      // Update password using Supabase auth
-      const { error } = await supabase.auth.updateUser({
-        password: passwordData.newPassword
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      toast.success("Password changed successfully");
-      setIsPasswordChangeModalOpen(false);
-      setPasswordData({
-        currentPassword: "",
-        newPassword: "",
-        confirmPassword: "",
-      });
-    } catch (error: any) {
-      console.error('Error changing password:', error);
-      toast.error(error.message || 'Failed to change password. Please try again.');
-    } finally {
-      setIsChangingPassword(false);
-    }
-  };
-
   // Fetch book members from Supabase
   const fetchBookMembers = useCallback(async () => {
     if (!selectedBookId || !user?.email) return;
@@ -995,7 +1001,37 @@ export default function Home() {
         throw error;
       }
 
-      toast.success("Member added successfully!");
+      // Get book name and inviter name for email
+      const selectedBook = books.find(b => b.id === selectedBookId);
+      const bookName = selectedBook?.name || 'the book';
+      const inviterName = getCurrentUserName();
+      const inviterEmail = user.email;
+
+      // Send invitation email via Edge Function
+      try {
+        const { data: emailData, error: emailError } = await supabase.functions.invoke('send-member-invitation', {
+          body: {
+            inviteeEmail: email,
+            inviterName: inviterName,
+            inviterEmail: inviterEmail,
+            bookName: bookName,
+            role: role,
+          },
+        });
+
+        if (emailError) {
+          console.error('Error sending invitation email:', emailError);
+          toast.success("Member added successfully!");
+          toast.info(`Invitation email could not be sent to ${email}. Member was still added.`);
+        } else {
+          toast.success(`Member added successfully! Invitation email sent to ${email}.`);
+        }
+      } catch (emailErr: any) {
+        console.error('Error calling invitation email function:', emailErr);
+        toast.success("Member added successfully!");
+        toast.info(`Invitation email could not be sent to ${email}. Member was still added.`);
+      }
+
       await fetchBookMembers();
       setIsAddMemberModalOpen(false);
       setNewMemberEmail("");
@@ -1661,6 +1697,27 @@ export default function Home() {
     }
   }, [user, isProfileOpen]);
 
+  // Initialize notification permission and browser notifications state
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotificationPermission(Notification.permission);
+      
+      try {
+        const savedPermission = localStorage.getItem('notificationPermission') as 'default' | 'granted' | 'denied' | null;
+        if (savedPermission) {
+          setNotificationPermission(savedPermission);
+        }
+        
+        const savedEnabled = localStorage.getItem('browserNotificationsEnabled');
+        if (savedEnabled === 'true' && Notification.permission === 'granted') {
+          setBrowserNotificationsEnabled(true);
+        }
+      } catch (error) {
+        // Ignore localStorage errors (e.g., in incognito mode)
+      }
+    }
+  }, []);
+
   // Refresh session periodically and on window focus to sync user metadata across tabs/windows
   useEffect(() => {
     if (!user) return;
@@ -1870,34 +1927,18 @@ export default function Home() {
           filter: `book_id=eq.${selectedBookId}`,
         },
         (payload) => {
-          console.log('Activity log INSERT event received:', payload);
           const newActivity = (payload as any).new_record;
-          if (!newActivity) {
-            console.warn('No new_record in activity log payload');
-            return;
-          }
-          
-          // Get current user email from ref (most up-to-date) or fallback to user?.email
-          const currentUserEmail = userEmailRef.current || user?.email;
-          
-          console.log('New activity:', newActivity);
-          console.log('Current user email:', currentUserEmail);
-          console.log('Activity user email:', newActivity.user_email);
-          console.log('Activity type:', newActivity.activity_type);
-          console.log('Book ID:', newActivity.book_id);
+          if (!newActivity) return;
           
           // Don't show notification for current user's own activities
-          if (newActivity.user_email === currentUserEmail) {
-            console.log('Skipping notification - activity from current user');
+          if (newActivity.user_email === userEmailRef.current) {
             return;
           }
-
-          console.log('Showing notification for activity:', newActivity.activity_type);
 
           // Format and show notification
           const notificationMessage = formatActivityNotification(newActivity);
           
-          // Show in-app toast notification
+          // Show notification with activity icon
           toast.info(notificationMessage, {
             icon: <Activity className="h-4 w-4" />,
             duration: 4000,
@@ -1909,9 +1950,6 @@ export default function Home() {
               },
             },
           });
-
-          // Show browser notification if enabled
-          showBrowserNotification(notificationMessage, newActivity.id);
 
           // Refresh activities list
           fetchActivities();
@@ -2213,25 +2251,6 @@ export default function Home() {
     booksLoadingRef.current = booksLoading;
   }, [fetchTransactions, fetchBooks, books.length, booksLoading]);
 
-  // Auto-focus close button when activity modal opens
-  useEffect(() => {
-    if (isActivityModalOpen) {
-      // Small delay to ensure the dialog is fully rendered
-      const timer = setTimeout(() => {
-        // Find the close button in the dialog (Radix UI Dialog close button)
-        const dialog = document.querySelector('[data-state="open"]');
-        if (dialog) {
-          const closeButton = dialog.querySelector('button[aria-label="Close"], button:has(svg)') as HTMLButtonElement;
-          if (closeButton) {
-            closeButton.focus();
-          }
-        }
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [isActivityModalOpen]);
-
-
   // Browser history management for back button navigation
   useEffect(() => {
     // Handle browser back button
@@ -2301,6 +2320,10 @@ export default function Home() {
         setIsPasswordChangeModalOpen(false);
         return;
       }
+      if (isLogoutConfirmOpen) {
+        setIsLogoutConfirmOpen(false);
+        return;
+      }
       if (isSettingsModalOpen) {
         setIsSettingsModalOpen(false);
         return;
@@ -2319,7 +2342,7 @@ export default function Home() {
     isHistoryDialogOpen, isDeleteMemberConfirmOpen, isDeleteBookConfirmOpen, isDeleteConfirmOpen,
     isEditDialogOpen, isDialogOpen, isEditRoleModalOpen, isAddMemberModalOpen, isPartySelectorOpen,
     isDateFilterOpen, isBookDialogOpen, isRenameBookDialogOpen, isActivityModalOpen,
-    isMembersModalOpen, isProfileOpen, isPasswordChangeModalOpen, isSettingsModalOpen, activeTab
+    isMembersModalOpen, isProfileOpen, isPasswordChangeModalOpen, isLogoutConfirmOpen, isSettingsModalOpen, activeTab
   ]);
 
   // Push to history when modals open or tab changes
@@ -2328,7 +2351,7 @@ export default function Home() {
       isDeleteConfirmOpen || isEditDialogOpen || isDialogOpen || isEditRoleModalOpen ||
       isAddMemberModalOpen || isPartySelectorOpen || isDateFilterOpen || isBookDialogOpen ||
       isRenameBookDialogOpen || isActivityModalOpen || isMembersModalOpen || isProfileOpen ||
-      isPasswordChangeModalOpen || isSettingsModalOpen || activeTab === 'reports';
+      isPasswordChangeModalOpen || isLogoutConfirmOpen || isSettingsModalOpen || activeTab === 'reports';
 
     if (hasOpenModal) {
       const state = { 
@@ -2341,18 +2364,19 @@ export default function Home() {
     isHistoryDialogOpen, isDeleteMemberConfirmOpen, isDeleteBookConfirmOpen, isDeleteConfirmOpen,
     isEditDialogOpen, isDialogOpen, isEditRoleModalOpen, isAddMemberModalOpen, isPartySelectorOpen,
     isDateFilterOpen, isBookDialogOpen, isRenameBookDialogOpen, isActivityModalOpen,
-    isMembersModalOpen, isProfileOpen, isSettingsModalOpen, activeTab
+    isMembersModalOpen, isProfileOpen, isPasswordChangeModalOpen, isLogoutConfirmOpen, isSettingsModalOpen, activeTab
   ]);
 
   // Prevent body scroll when any modal is open
   useEffect(() => {
     const hasOpenModal = isDialogOpen || isEditDialogOpen || isMembersModalOpen || 
                         isActivityModalOpen || isProfileOpen || isSettingsModalOpen ||
-                        isPasswordChangeModalOpen || isAddMemberModalOpen || isEditRoleModalOpen || isHistoryDialogOpen ||
+                        isAddMemberModalOpen || isEditRoleModalOpen || isHistoryDialogOpen ||
                         isBookDialogOpen || isDeleteConfirmOpen || isRenameBookDialogOpen ||
                         isDeleteBookConfirmOpen || isBookSelectorOpen || isDateFilterOpen ||
                         isAddPartyDialogOpen || isRenamePartyDialogOpen || isDeletePartyConfirmOpen ||
-                        isPartySelectorOpen || isDeleteMemberConfirmOpen;
+                        isPartySelectorOpen || isDeleteMemberConfirmOpen || isPasswordChangeModalOpen ||
+                        isLogoutConfirmOpen;
     
     if (hasOpenModal) {
       // Save current scroll position
@@ -2378,7 +2402,8 @@ export default function Home() {
     isSettingsModalOpen, isAddMemberModalOpen, isEditRoleModalOpen, isHistoryDialogOpen,
     isBookDialogOpen, isDeleteConfirmOpen, isRenameBookDialogOpen, isDeleteBookConfirmOpen,
     isBookSelectorOpen, isDateFilterOpen, isAddPartyDialogOpen, isRenamePartyDialogOpen,
-    isDeletePartyConfirmOpen, isPartySelectorOpen, isDeleteMemberConfirmOpen
+    isDeletePartyConfirmOpen, isPartySelectorOpen, isDeleteMemberConfirmOpen, isPasswordChangeModalOpen,
+    isLogoutConfirmOpen
   ]);
 
   // Fetch book members when book changes (needed for member filter)
@@ -3263,6 +3288,21 @@ export default function Home() {
     });
   };
 
+  const handleLogout = async () => {
+    try {
+      setLogoutLoading(true);
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      toast.success("Logged out successfully");
+      setIsLogoutConfirmOpen(false);
+      window.location.href = "/auth";
+    } catch (error: any) {
+      console.error('Error logging out:', error);
+      toast.error('Failed to logout. Please try again.');
+      setLogoutLoading(false);
+    }
+  };
+
   const handleDeleteBook = async () => {
     if (!bookToDelete) return;
 
@@ -3803,9 +3843,9 @@ export default function Home() {
                   ) : (
                     <button
                       onClick={handleOpenBookSelector}
-                      className="flex items-center gap-1.5 px-0 py-2 hover:opacity-70 transition-opacity hover:bg-transparent active:bg-transparent focus:bg-transparent"
+                      className="flex items-center gap-1.5 px-0 py-2 hover:opacity-70 transition-opacity"
                     >
-                      <span className="font-semibold text-base truncate">{selectedBook?.name || "Select a book"}</span>
+                      <span className="font-semibold text-sm truncate">{selectedBook?.name || "Select a book"}</span>
                       <ChevronDown className="h-5 w-5 flex-shrink-0" />
                     </button>
                   )}
@@ -3968,7 +4008,7 @@ export default function Home() {
                 <div className="h-8 flex-1 bg-muted animate-pulse rounded"></div>
               </div>
             ) : (
-              <div className={`flex items-center gap-2 bg-background rounded-lg border px-3 py-1.5 ${
+              <div className={`flex items-center gap-2 bg-background rounded-lg border px-3 py-1.5 shadow-sm ${
                 searchQuery.trim() !== ""
                   ? "border-primary"
                   : "border-border"
@@ -4002,7 +4042,7 @@ export default function Home() {
           </div>
 
           {/* Filter Section */}
-          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide py-1.5 px-0.5">
             {(() => {
               // Define filter buttons with their configurations
               const filterButtons = [
@@ -4011,11 +4051,11 @@ export default function Home() {
                   isActive: dateFilter !== "allTime",
                   order: 0,
                   render: () => (
-                    <div key="date" className="relative flex-shrink-0">
+                    <div key="date" className="relative flex-shrink-0 z-10">
                       <Button
                         variant="outline"
                         onClick={() => setIsDateFilterOpen(true)}
-                        className={`whitespace-nowrap justify-start ${dateFilter !== "allTime" ? "pr-8" : ""} ${
+                        className={`whitespace-nowrap justify-start shadow-[0_1px_3px_0_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)] relative ${dateFilter !== "allTime" ? "pr-8" : ""} ${
                           dateFilter !== "allTime"
                             ? "border-primary text-primary bg-transparent"
                             : ""
@@ -4054,11 +4094,11 @@ export default function Home() {
                   isActive: typeFilter !== "all",
                   order: 1,
                   render: () => (
-                    <div key="type" className="relative flex-shrink-0">
+                    <div key="type" className="relative flex-shrink-0 z-10">
                       <Button
                         variant="outline"
                         onClick={() => setIsTypeFilterOpen(true)}
-                        className={`whitespace-nowrap justify-start ${typeFilter !== "all" ? "pr-8" : ""} ${
+                        className={`whitespace-nowrap justify-start shadow-sm relative ${typeFilter !== "all" ? "pr-8" : ""} ${
                           typeFilter !== "all"
                             ? "border-primary text-primary bg-transparent"
                             : ""
@@ -4090,11 +4130,11 @@ export default function Home() {
                   isActive: memberFilter !== "all",
                   order: 2,
                   render: () => (
-                    <div key="member" className="relative flex-shrink-0">
+                    <div key="member" className="relative flex-shrink-0 z-10">
                       <Button
                         variant="outline"
                         onClick={() => setIsMemberFilterOpen(true)}
-                        className={`whitespace-nowrap justify-start ${memberFilter !== "all" ? "pr-8" : ""} ${
+                        className={`whitespace-nowrap justify-start shadow-sm relative ${memberFilter !== "all" ? "pr-8" : ""} ${
                           memberFilter !== "all"
                             ? "border-primary text-primary bg-transparent"
                             : ""
@@ -4124,11 +4164,11 @@ export default function Home() {
                   isActive: partyFilter !== "all",
                   order: 3,
                   render: () => (
-                    <div key="party" className="relative flex-shrink-0">
+                    <div key="party" className="relative flex-shrink-0 z-10">
                       <Button
                         variant="outline"
                         onClick={() => setIsPartyFilterOpen(true)}
-                        className={`whitespace-nowrap justify-start ${partyFilter !== "all" ? "pr-8" : ""} ${
+                        className={`whitespace-nowrap justify-start shadow-sm relative ${partyFilter !== "all" ? "pr-8" : ""} ${
                           partyFilter !== "all"
                             ? "border-primary text-primary bg-transparent"
                             : ""
@@ -4232,8 +4272,8 @@ export default function Home() {
             ) : (
               Object.entries(groupedTransactions).map(([date, dateTransactions]) => (
                 <div key={date} className="space-y-1.5">
-                  <div className="sticky top-0 bg-background pb-0.5 pt-1 z-10">
-                    <h3 className="text-sm font-semibold text-muted-foreground">{date}</h3>
+                  <div className="sticky top-0 bg-gray-50 dark:bg-background pb-0.5 pt-1 z-10">
+                    <h3 className="text-xs font-medium text-muted-foreground px-2 py-1 rounded bg-transparent dark:bg-transparent inline-block">{date}</h3>
                   </div>
                   {dateTransactions.map((transaction) => {
                     const currentUserRole = bookRoles[selectedBookId || 0];
@@ -4243,7 +4283,7 @@ export default function Home() {
                     return (
                     <Card 
                       key={transaction.id} 
-                      className={`border border-border shadow-none transition-shadow ${
+                      className={`border border-border shadow-sm transition-shadow ${
                         canView ? 'cursor-pointer' : 'cursor-default'
                       }`}
                       onClick={async () => {
@@ -4610,7 +4650,23 @@ export default function Home() {
       </Dialog>
 
       {/* Settings Modal */}
-      <Dialog open={isSettingsModalOpen} onOpenChange={setIsSettingsModalOpen}>
+      <Dialog open={isSettingsModalOpen} onOpenChange={(open) => {
+        setIsSettingsModalOpen(open);
+        // Close password change modal if settings modal is closed
+        if (!open && isPasswordChangeModalOpen) {
+          setIsPasswordChangeModalOpen(false);
+          setPasswordData({
+            oldPassword: "",
+            newPassword: "",
+            confirmPassword: "",
+          });
+        }
+        // Close logout confirmation modal if settings modal is closed
+        if (!open && isLogoutConfirmOpen) {
+          setIsLogoutConfirmOpen(false);
+          setLogoutLoading(false);
+        }
+      }}>
         <DialogContent 
           className="max-h-[85vh] overflow-y-auto overflow-x-hidden"
           onWheel={(e) => e.stopPropagation()}
@@ -4624,7 +4680,7 @@ export default function Home() {
           <div className="space-y-4 py-4">
             {/* Account Section */}
             <div>
-              <h2 className="text-xs font-semibold mb-3 px-1">Account</h2>
+              <h2 className="text-sm font-semibold mb-3 px-1">Account</h2>
               <Card className="border border-border">
                 <CardContent className="p-0">
                   <button 
@@ -4642,8 +4698,8 @@ export default function Home() {
                         <User className="h-5 w-5 text-white" />
                       </div>
                       <div className="text-left">
-                        <p className="text-xs font-medium">Profile</p>
-                        <p className="text-xs text-muted-foreground">Manage your profile information</p>
+                        <p className="font-medium">Profile</p>
+                        <p className="text-sm text-muted-foreground">Manage your profile information</p>
                       </div>
                     </div>
                     <ChevronDown className="h-5 w-5 text-muted-foreground rotate-[-90deg]" />
@@ -4658,10 +4714,9 @@ export default function Home() {
                 <CardContent className="p-0">
                   <button 
                     onClick={() => {
-                      setIsSettingsModalOpen(false);
                       setIsPasswordChangeModalOpen(true);
                       setPasswordData({
-                        currentPassword: "",
+                        oldPassword: "",
                         newPassword: "",
                         confirmPassword: "",
                       });
@@ -4746,7 +4801,7 @@ export default function Home() {
                       </div>
                       <div className="text-left">
                         <p className="font-medium">About Us</p>
-                        <p className="text-xs text-muted-foreground">Learn more about the app</p>
+                        <p className="text-sm text-muted-foreground">Learn more about the app</p>
                       </div>
                     </div>
                     <ChevronDown className="h-5 w-5 text-muted-foreground rotate-[-90deg]" />
@@ -4756,46 +4811,116 @@ export default function Home() {
             </div>
 
             {/* Password Change Dialog */}
-            <Dialog open={isPasswordChangeModalOpen} onOpenChange={setIsPasswordChangeModalOpen}>
+            <Dialog open={isPasswordChangeModalOpen} onOpenChange={(open) => {
+              setIsPasswordChangeModalOpen(open);
+              if (!open) {
+                // Reset password data when closing
+                setPasswordData({
+                  oldPassword: "",
+                  newPassword: "",
+                  confirmPassword: "",
+                });
+                setShowPasswords({
+                  oldPassword: false,
+                  newPassword: false,
+                  confirmPassword: false,
+                });
+              }
+            }}>
               <DialogContent className="max-w-md">
                 <DialogHeader>
                   <DialogTitle>Change Password</DialogTitle>
                   <DialogDescription>
-                    Enter your new password. Make sure it's at least 6 characters long.
+                    Enter your current password and new password. Make sure the new password is at least 6 characters long.
                   </DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-4 py-4">
                   <div className="flex flex-col gap-2">
+                    <Label htmlFor="oldPassword" className="text-xs font-medium">
+                      Current Password
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="oldPassword"
+                        type={showPasswords.oldPassword ? "text" : "password"}
+                        placeholder="Enter current password"
+                        value={passwordData.oldPassword}
+                        onChange={(e) =>
+                          setPasswordData({ ...passwordData, oldPassword: e.target.value })
+                        }
+                        className="text-xs pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPasswords({ ...showPasswords, oldPassword: !showPasswords.oldPassword })}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        {showPasswords.oldPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
                     <Label htmlFor="newPassword" className="text-xs font-medium">
                       New Password
                     </Label>
-                    <Input
-                      id="newPassword"
-                      type="password"
-                      placeholder="Enter new password"
-                      value={passwordData.newPassword}
-                      onChange={(e) =>
-                        setPasswordData({ ...passwordData, newPassword: e.target.value })
-                      }
-                      className="text-xs"
-                    />
+                    <div className="relative">
+                      <Input
+                        id="newPassword"
+                        type={showPasswords.newPassword ? "text" : "password"}
+                        placeholder="Enter new password"
+                        value={passwordData.newPassword}
+                        onChange={(e) =>
+                          setPasswordData({ ...passwordData, newPassword: e.target.value })
+                        }
+                        className="text-xs pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPasswords({ ...showPasswords, newPassword: !showPasswords.newPassword })}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        {showPasswords.newPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="flex flex-col gap-2">
                     <Label htmlFor="confirmPassword" className="text-xs font-medium">
                       Confirm New Password
                     </Label>
-                    <Input
-                      id="confirmPassword"
-                      type="password"
-                      placeholder="Confirm new password"
-                      value={passwordData.confirmPassword}
-                      onChange={(e) =>
-                        setPasswordData({ ...passwordData, confirmPassword: e.target.value })
-                      }
-                      className="text-xs"
-                    />
+                    <div className="relative">
+                      <Input
+                        id="confirmPassword"
+                        type={showPasswords.confirmPassword ? "text" : "password"}
+                        placeholder="Confirm new password"
+                        value={passwordData.confirmPassword}
+                        onChange={(e) =>
+                          setPasswordData({ ...passwordData, confirmPassword: e.target.value })
+                        }
+                        className="text-xs pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPasswords({ ...showPasswords, confirmPassword: !showPasswords.confirmPassword })}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        {showPasswords.confirmPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -4805,7 +4930,7 @@ export default function Home() {
                     onClick={() => {
                       setIsPasswordChangeModalOpen(false);
                       setPasswordData({
-                        currentPassword: "",
+                        oldPassword: "",
                         newPassword: "",
                         confirmPassword: "",
                       });
@@ -4816,7 +4941,7 @@ export default function Home() {
                   </Button>
                   <Button
                     onClick={handlePasswordChange}
-                    disabled={isChangingPassword || !passwordData.newPassword || !passwordData.confirmPassword}
+                    disabled={isChangingPassword || !passwordData.oldPassword || !passwordData.newPassword || !passwordData.confirmPassword}
                     className="bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90"
                   >
                     {isChangingPassword ? "Changing..." : "Change Password"}
@@ -4828,37 +4953,65 @@ export default function Home() {
             {/* Logout Section */}
             <div className="pt-4">
               <Button 
-                onClick={async () => {
-                  try {
-                    setLogoutLoading(true);
-                    const { error } = await supabase.auth.signOut();
-                    if (error) throw error;
-                    toast.success("Logged out successfully");
-                    window.location.href = "/auth";
-                  } catch (error: any) {
-                    console.error('Error logging out:', error);
-                    toast.error('Failed to logout. Please try again.');
-                    setLogoutLoading(false);
-                  }
+                onClick={() => {
+                  setIsSettingsModalOpen(false);
+                  setIsLogoutConfirmOpen(true);
                 }}
                 variant="outline"
                 disabled={logoutLoading}
                 className="w-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {logoutLoading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-red-600 border-t-transparent mr-2"></div>
-                    Logging out...
-                  </>
-                ) : (
-                  <>
-                    <LogOut className="h-4 w-4 mr-2" />
-                    Logout
-                  </>
-                )}
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Logout Confirmation Dialog */}
+      <Dialog open={isLogoutConfirmOpen} onOpenChange={(open) => {
+        setIsLogoutConfirmOpen(open);
+        if (!open) {
+          setLogoutLoading(false);
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirm Logout</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to logout? You will need to sign in again to access your account.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="flex justify-end gap-2">
+            <Button 
+              variant="outline" 
+              className="bg-gray-100 hover:bg-gray-200"
+              onClick={() => {
+                setIsLogoutConfirmOpen(false);
+                setLogoutLoading(false);
+              }}
+              disabled={logoutLoading}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              className="bg-red-500 hover:bg-red-600"
+              onClick={handleLogout}
+              disabled={logoutLoading}
+            >
+              {logoutLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
+                  Logging out...
+                </>
+              ) : (
+                'Logout'
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -4926,17 +5079,50 @@ export default function Home() {
                 <Label htmlFor="singleDate" className="text-xs font-medium">Select Date</Label>
                 <Input
                   id="singleDate"
-                  type="date"
-                  value={singleDate || getISTDateString()}
-                  onChange={(e) => setSingleDate(e.target.value)}
-                  onClick={(e) => {
-                    const input = e.currentTarget;
-                    if (input && 'showPicker' in input) {
-                      (input as any).showPicker();
+                  type="text"
+                  placeholder="dd-mm-yyyy"
+                  value={singleDate ? formatDateToDDMMYYYY(singleDate) : formatDateToDDMMYYYY(getISTDateString())}
+                  onChange={(e) => {
+                    let value = e.target.value;
+                    // Remove non-digit and non-dash characters
+                    value = value.replace(/[^\d-]/g, "");
+                    // Auto-format as user types: dd-mm-yyyy
+                    if (value.length <= 2) {
+                      // Just day
+                      value = value;
+                    } else if (value.length <= 5) {
+                      // Day and month
+                      value = value.slice(0, 2) + "-" + value.slice(2);
+                    } else {
+                      // Day, month, and year
+                      value = value.slice(0, 2) + "-" + value.slice(2, 4) + "-" + value.slice(4, 8);
+                    }
+                    // Convert to YYYY-MM-DD for storage
+                    const isoDate = parseDDMMYYYYToISO(value);
+                    if (isoDate) {
+                      setSingleDate(isoDate);
+                    } else if (value.length === 0) {
+                      setSingleDate(getISTDateString());
+                    }
+                  }}
+                  onBlur={(e) => {
+                    // Validate and ensure proper format on blur
+                    const value = e.target.value;
+                    if (value) {
+                      const isoDate = parseDDMMYYYYToISO(value);
+                      if (isoDate) {
+                        setSingleDate(isoDate);
+                      } else {
+                        // Invalid date, reset to today
+                        setSingleDate(getISTDateString());
+                        toast.error("Invalid date format. Please use dd-mm-yyyy");
+                      }
+                    } else {
+                      setSingleDate(getISTDateString());
                     }
                   }}
                   className={!singleDate ? "text-muted-foreground" : "text-foreground"}
-                  max={getISTDate().toISOString().split("T")[0]}
+                  maxLength={10}
                 />
               </div>
             )}
@@ -4947,36 +5133,101 @@ export default function Home() {
                   <Label htmlFor="dateRangeStart" className="text-xs font-medium">From Date</Label>
                   <Input
                     id="dateRangeStart"
-                    type="date"
-                    value={dateRangeStart || getISTDateString()}
-                    onChange={(e) => setDateRangeStart(e.target.value)}
-                    onClick={(e) => {
-                      const input = e.currentTarget;
-                      if (input && 'showPicker' in input) {
-                        (input as any).showPicker();
+                    type="text"
+                    placeholder="dd-mm-yyyy"
+                    value={dateRangeStart ? formatDateToDDMMYYYY(dateRangeStart) : formatDateToDDMMYYYY(getISTDateString())}
+                    onChange={(e) => {
+                      let value = e.target.value;
+                      // Remove non-digit and non-dash characters
+                      value = value.replace(/[^\d-]/g, "");
+                      // Auto-format as user types: dd-mm-yyyy
+                      if (value.length <= 2) {
+                        // Just day
+                        value = value;
+                      } else if (value.length <= 5) {
+                        // Day and month
+                        value = value.slice(0, 2) + "-" + value.slice(2);
+                      } else {
+                        // Day, month, and year
+                        value = value.slice(0, 2) + "-" + value.slice(2, 4) + "-" + value.slice(4, 8);
+                      }
+                      // Convert to YYYY-MM-DD for storage
+                      const isoDate = parseDDMMYYYYToISO(value);
+                      if (isoDate) {
+                        setDateRangeStart(isoDate);
+                      } else if (value.length === 0) {
+                        setDateRangeStart(getISTDateString());
+                      }
+                    }}
+                    onBlur={(e) => {
+                      // Validate and ensure proper format on blur
+                      const value = e.target.value;
+                      if (value) {
+                        const isoDate = parseDDMMYYYYToISO(value);
+                        if (isoDate) {
+                          setDateRangeStart(isoDate);
+                        } else {
+                          // Invalid date, reset to today
+                          setDateRangeStart(getISTDateString());
+                          toast.error("Invalid date format. Please use dd-mm-yyyy");
+                        }
+                      } else {
+                        setDateRangeStart(getISTDateString());
                       }
                     }}
                     className={!dateRangeStart ? "text-muted-foreground" : "text-foreground"}
-                    max={dateRangeEnd || getISTDate().toISOString().split("T")[0]}
+                    maxLength={10}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="dateRangeEnd" className="text-xs font-medium">To Date</Label>
                   <Input
                     id="dateRangeEnd"
-                    type="date"
-                    value={dateRangeEnd || getISTDateString()}
-                    onChange={(e) => setDateRangeEnd(e.target.value)}
-                    onClick={(e) => {
-                      const input = e.currentTarget;
-                      if (input && 'showPicker' in input) {
-                        (input as any).showPicker();
+                    type="text"
+                    placeholder="dd-mm-yyyy"
+                    value={dateRangeEnd ? formatDateToDDMMYYYY(dateRangeEnd) : formatDateToDDMMYYYY(getISTDateString())}
+                    onChange={(e) => {
+                      let value = e.target.value;
+                      // Remove non-digit and non-dash characters
+                      value = value.replace(/[^\d-]/g, "");
+                      // Auto-format as user types: dd-mm-yyyy
+                      if (value.length <= 2) {
+                        // Just day
+                        value = value;
+                      } else if (value.length <= 5) {
+                        // Day and month
+                        value = value.slice(0, 2) + "-" + value.slice(2);
+                      } else {
+                        // Day, month, and year
+                        value = value.slice(0, 2) + "-" + value.slice(2, 4) + "-" + value.slice(4, 8);
+                      }
+                      // Convert to YYYY-MM-DD for storage
+                      const isoDate = parseDDMMYYYYToISO(value);
+                      if (isoDate) {
+                        setDateRangeEnd(isoDate);
+                      } else if (value.length === 0) {
+                        setDateRangeEnd(getISTDateString());
+                      }
+                    }}
+                    onBlur={(e) => {
+                      // Validate and ensure proper format on blur
+                      const value = e.target.value;
+                      if (value) {
+                        const isoDate = parseDDMMYYYYToISO(value);
+                        if (isoDate) {
+                          setDateRangeEnd(isoDate);
+                        } else {
+                          // Invalid date, reset to today
+                          setDateRangeEnd(getISTDateString());
+                          toast.error("Invalid date format. Please use dd-mm-yyyy");
+                        }
+                      } else {
+                        setDateRangeEnd(getISTDateString());
                       }
                     }}
                     className={dateRangeStart ? "!text-foreground" : (!dateRangeEnd ? "text-muted-foreground" : "text-foreground")}
                     style={dateRangeStart ? { color: 'hsl(var(--foreground))' } : undefined}
-                    min={dateRangeStart || undefined}
-                    max={getISTDate().toISOString().split("T")[0]}
+                    maxLength={10}
                   />
                 </div>
               </div>
@@ -5634,17 +5885,50 @@ export default function Home() {
               <div className="relative">
                 <Input
                   id="date"
-                  type="date"
-                  value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                  onClick={(e) => {
-                    const input = e.currentTarget;
-                    if (input && 'showPicker' in input) {
-                      (input as any).showPicker();
+                  type="text"
+                  placeholder="dd-mm-yyyy"
+                  value={formData.date ? formatDateToDDMMYYYY(formData.date) : ""}
+                  onChange={(e) => {
+                    let value = e.target.value;
+                    // Remove non-digit and non-dash characters
+                    value = value.replace(/[^\d-]/g, "");
+                    // Auto-format as user types: dd-mm-yyyy
+                    if (value.length <= 2) {
+                      // Just day
+                      value = value;
+                    } else if (value.length <= 5) {
+                      // Day and month
+                      value = value.slice(0, 2) + "-" + value.slice(2);
+                    } else {
+                      // Day, month, and year
+                      value = value.slice(0, 2) + "-" + value.slice(2, 4) + "-" + value.slice(4, 8);
+                    }
+                    // Convert to YYYY-MM-DD for storage
+                    const isoDate = parseDDMMYYYYToISO(value);
+                    if (isoDate) {
+                      setFormData({ ...formData, date: isoDate });
+                    } else if (value.length === 0) {
+                      setFormData({ ...formData, date: getISTDateString() });
                     }
                   }}
-                  className="w-full cursor-pointer"
-                  max={getISTDate().toISOString().split("T")[0]}
+                  onBlur={(e) => {
+                    // Validate and ensure proper format on blur
+                    const value = e.target.value;
+                    if (value) {
+                      const isoDate = parseDDMMYYYYToISO(value);
+                      if (isoDate) {
+                        setFormData({ ...formData, date: isoDate });
+                      } else {
+                        // Invalid date, reset to today
+                        setFormData({ ...formData, date: getISTDateString() });
+                        toast.error("Invalid date format. Please use dd-mm-yyyy");
+                      }
+                    } else {
+                      setFormData({ ...formData, date: getISTDateString() });
+                    }
+                  }}
+                  className="w-full"
+                  maxLength={10}
                 />
               </div>
             </div>
@@ -5859,22 +6143,53 @@ export default function Home() {
                     <div className="relative">
                       <Input
                         id="editDate"
-                        type="date"
-                        value={formData.date}
+                        type="text"
+                        placeholder="dd-mm-yyyy"
+                        value={formData.date ? formatDateToDDMMYYYY(formData.date) : ""}
                         onChange={(e) => {
-                          if (!isViewer) {
-                            setFormData({ ...formData, date: e.target.value });
-                          }
-                        }}
-                        onClick={(e) => {
                           if (isViewer) return;
-                          const input = e.currentTarget;
-                          if (input && 'showPicker' in input) {
-                            (input as any).showPicker();
+                          let value = e.target.value;
+                          // Remove non-digit and non-dash characters
+                          value = value.replace(/[^\d-]/g, "");
+                          // Auto-format as user types: dd-mm-yyyy
+                          if (value.length <= 2) {
+                            // Just day
+                            value = value;
+                          } else if (value.length <= 5) {
+                            // Day and month
+                            value = value.slice(0, 2) + "-" + value.slice(2);
+                          } else {
+                            // Day, month, and year
+                            value = value.slice(0, 2) + "-" + value.slice(2, 4) + "-" + value.slice(4, 8);
+                          }
+                          // Convert to YYYY-MM-DD for storage
+                          const isoDate = parseDDMMYYYYToISO(value);
+                          if (isoDate) {
+                            setFormData({ ...formData, date: isoDate });
+                          } else if (value.length === 0) {
+                            setFormData({ ...formData, date: getISTDateString() });
                           }
                         }}
-                        className="w-full cursor-pointer"
-                        max={getISTDate().toISOString().split("T")[0]}
+                        onBlur={(e) => {
+                          if (isViewer) return;
+                          // Validate and ensure proper format on blur
+                          const value = e.target.value;
+                          if (value) {
+                            const isoDate = parseDDMMYYYYToISO(value);
+                            if (isoDate) {
+                              setFormData({ ...formData, date: isoDate });
+                            } else {
+                              // Invalid date, reset to current value
+                              const currentDate = formData.date || getISTDateString();
+                              setFormData({ ...formData, date: currentDate });
+                              toast.error("Invalid date format. Please use dd-mm-yyyy");
+                            }
+                          } else {
+                            setFormData({ ...formData, date: getISTDateString() });
+                          }
+                        }}
+                        className="w-full"
+                        maxLength={10}
                         disabled={isViewer}
                         readOnly={isViewer}
                       />
@@ -6376,7 +6691,7 @@ export default function Home() {
           </DialogHeader>
           
           <div 
-            className="space-y-4 py-4"
+            className="space-y-4 py-4 px-0"
             onWheel={(e) => {
               e.stopPropagation();
             }}
@@ -6406,7 +6721,7 @@ export default function Home() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="space-y-3 flex flex-col items-center">
+              <div className="space-y-3 w-full">
                 {activities.map((activity) => {
                   const activityDate = new Date(activity.created_at);
                   const dateTimeString = formatDateTime(activityDate);
@@ -6465,7 +6780,7 @@ export default function Home() {
                   const colors = getActivityColors();
                   
                   return (
-                    <Card key={activity.id} className="border border-border w-full max-w-full">
+                    <Card key={activity.id} className="border border-border w-full">
                       <CardContent className="p-4">
                         <div className="flex items-center gap-3">
                           <div className={`h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 border-2 ${colors.bg} ${colors.border}`}>
@@ -6501,7 +6816,7 @@ export default function Home() {
         }
       }}>
         <DialogContent 
-          className="max-w-md sm:max-w-lg max-h-[85vh] overflow-y-auto overflow-x-hidden overflow-visible"
+          className="max-w-md sm:max-w-lg max-h-[85vh] overflow-y-auto overflow-x-hidden"
           onWheel={(e) => e.stopPropagation()}
           onScroll={(e) => e.stopPropagation()}
         >
@@ -6512,7 +6827,7 @@ export default function Home() {
           
           <div className="space-y-6 py-4">
             <div>
-              <p className="text-xs text-muted-foreground mb-4">
+              <p className="text-sm text-muted-foreground mb-4">
                 Manage who has access to "{selectedBook?.name || "this book"}"
               </p>
             </div>
@@ -6520,14 +6835,14 @@ export default function Home() {
             {/* Members List */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-semibold">Current Members</h3>
+                <h3 className="text-sm font-semibold">Current Members</h3>
                 {membersLoading ? (
-                  <span className="text-xs text-muted-foreground flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground flex items-center gap-2">
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent"></div>
                     Loading...
                   </span>
                 ) : (
-                  <span className="text-xs text-muted-foreground">{bookMembers.length} {bookMembers.length === 1 ? 'member' : 'members'}</span>
+                  <span className="text-sm text-muted-foreground">{bookMembers.length} {bookMembers.length === 1 ? 'member' : 'members'}</span>
                 )}
               </div>
 
@@ -6538,12 +6853,12 @@ export default function Home() {
               ) : bookMembers.length === 0 ? (
                 <Card className="border border-border">
                   <CardContent className="p-8 text-center">
-                    <p className="text-xs text-muted-foreground">No members yet. Add members to share this book.</p>
+                    <p className="text-muted-foreground">No members yet. Add members to share this book.</p>
                   </CardContent>
                 </Card>
               ) : (
                 <Card className="border border-border">
-                  <CardContent className="p-0 overflow-x-hidden overflow-y-visible">
+                  <CardContent className="p-0 overflow-x-hidden">
                     {bookMembers.map((member, index) => {
                       const isCurrentUser = member.email === profileData.email;
                       const roleColors: Record<string, string> = {
@@ -6558,7 +6873,7 @@ export default function Home() {
                       const isOnlyOwner = isCurrentUser && member.role === 'owner' && ownerCount === 1;
                       
                       return (
-                        <div key={member.email} className="p-4 border-b border-border last:border-b-0 relative overflow-visible">
+                        <div key={member.email} className="p-4 border-b border-border last:border-b-0 relative">
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex items-center gap-3 flex-1 min-w-0">
                               <div className={`h-12 w-12 rounded-full bg-gradient-to-r ${getGradientFromEmail(member.email)} flex items-center justify-center flex-shrink-0`}>
@@ -6568,12 +6883,12 @@ export default function Home() {
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 mb-1">
-                                  <p className="text-xs font-medium text-foreground truncate">{member.name || member.email.split('@')[0]}</p>
+                                  <p className="font-medium text-foreground truncate">{member.name || member.email.split('@')[0]}</p>
                                   <span className={`text-xs px-2 py-0.5 rounded-full ${roleColors[member.role] || roleColors.viewer} font-medium`}>
                                     {member.role.charAt(0).toUpperCase() + member.role.slice(1)}
                                   </span>
                                 </div>
-                                <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+                                <p className="text-sm text-muted-foreground truncate">{member.email}</p>
                               </div>
                             </div>
                             {(() => {
@@ -6613,7 +6928,7 @@ export default function Home() {
                                     {openMemberMenu === member.email && (
                                       <div 
                                         data-member-menu
-                                        className="absolute right-0 bottom-full mb-1 bg-background border border-border rounded-lg shadow-lg z-[100] min-w-[140px]"
+                                        className="absolute right-0 top-full mt-1 bg-background border border-border rounded-lg shadow-lg z-50 min-w-[140px] overflow-visible"
                                         onClick={(e) => e.stopPropagation()}
                                         onMouseDown={(e) => e.stopPropagation()}
                                       >
@@ -6682,7 +6997,7 @@ export default function Home() {
                                     {openMemberMenu === member.email && (
                                       <div 
                                         data-member-menu
-                                        className="absolute right-0 bottom-full mb-1 bg-background border border-border rounded-lg shadow-lg z-[100] min-w-[140px]"
+                                        className="absolute right-0 top-full mt-1 bg-background border border-border rounded-lg shadow-lg z-50 min-w-[140px] overflow-visible"
                                         onClick={(e) => e.stopPropagation()}
                                         onMouseDown={(e) => e.stopPropagation()}
                                       >
