@@ -3971,7 +3971,7 @@ export default function Home() {
                 <>
                   <div className="flex items-start justify-between mb-3 gap-2">
                     <div className="flex-1 min-w-0">
-                      <div className="mb-1.5">
+                      <div className="mb-0.5">
                         <span className="text-xs font-medium opacity-90 tracking-wide uppercase">Total Balance</span>
                       </div>
                       <div className="text-xl font-bold tracking-tight truncate">₹ {formatIndianNumber(totalBalance)}</div>
@@ -4271,9 +4271,9 @@ export default function Home() {
               </div>
             ) : (
               Object.entries(groupedTransactions).map(([date, dateTransactions]) => (
-                <div key={date} className="space-y-1.5">
-                  <div className="sticky top-0 bg-gray-50 dark:bg-background pb-0.5 pt-1 z-10">
-                    <h3 className="text-xs font-medium text-muted-foreground px-2 py-1 rounded bg-transparent dark:bg-transparent inline-block">{date}</h3>
+                <div key={date} className="space-y-2.5">
+                  <div className="sticky top-0 bg-gray-50 dark:bg-background pb-0 pt-1 z-10">
+                    <h3 className="text-xs font-medium text-muted-foreground px-2 py-0.5 rounded bg-transparent dark:bg-transparent inline-block">{date}</h3>
                   </div>
                   {dateTransactions.map((transaction) => {
                     const currentUserRole = bookRoles[selectedBookId || 0];
