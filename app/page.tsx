@@ -561,7 +561,6 @@ export default function Home() {
             badge: '/logo.png',
             tag: activityId?.toString(),
             requireInteraction: false,
-            vibrate: [200, 100, 200],
           });
         }).catch(() => {
           // Fallback to Notification API if service worker fails
