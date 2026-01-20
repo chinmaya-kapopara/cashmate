@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Filter, ArrowDown, ArrowUp, ArrowDownCircle, ArrowUpCircle, Home as HomeIcon, BarChart3, Wallet, User, Users, Search, Calendar, ChevronDown, History, Trash2, MoreVertical, Pencil, Settings as SettingsIcon, Bell, Shield, HelpCircle, Info, ArrowLeft, Mail, X, CalendarDays, LogOut, Activity, Lock, Eye, EyeOff } from "lucide-react";
+import { Plus, Filter, ArrowDown, ArrowUp, ArrowDownCircle, ArrowUpCircle, Home as HomeIcon, BarChart3, Wallet, User, Users, Search, Calendar, ChevronDown, History, Trash2, MoreVertical, Pencil, Settings as SettingsIcon, Shield, HelpCircle, Info, ArrowLeft, Mail, X, CalendarDays, LogOut, Activity, Lock, Eye, EyeOff } from "lucide-react";
 import LandingPage from "@/components/landing-page";
 
 // Categories removed - using initials/avatars instead
@@ -340,8 +340,6 @@ export default function Home() {
     confirmPassword: false,
   });
   const [isChangingPassword, setIsChangingPassword] = useState(false);
-  const [notificationPermission, setNotificationPermission] = useState<'default' | 'granted' | 'denied'>('default');
-  const [browserNotificationsEnabled, setBrowserNotificationsEnabled] = useState(false);
   const [profileData, setProfileData] = useState({
     name: "Chinmay Kapopara",
     email: user?.email || "kapopara.king@gmail.com",
@@ -496,102 +494,6 @@ export default function Home() {
       toast.error(error.message || 'Failed to change password. Please try again.');
     } finally {
       setIsChangingPassword(false);
-    }
-  };
-
-  // Request notification permission
-  const requestNotificationPermission = async () => {
-    if (!('Notification' in window)) {
-      toast.error('Your browser does not support notifications');
-      return;
-    }
-
-    try {
-      const permission = await Notification.requestPermission();
-      setNotificationPermission(permission);
-      
-      if (permission === 'granted') {
-        setBrowserNotificationsEnabled(true);
-        localStorage.setItem('browserNotificationsEnabled', 'true');
-        localStorage.setItem('notificationPermission', permission);
-        toast.success('Browser notifications enabled');
-      } else if (permission === 'denied') {
-        setBrowserNotificationsEnabled(false);
-        localStorage.setItem('browserNotificationsEnabled', 'false');
-        localStorage.setItem('notificationPermission', permission);
-        toast.error('Notification permission was denied. Please enable it in your browser settings.');
-      } else {
-        setBrowserNotificationsEnabled(false);
-        localStorage.setItem('browserNotificationsEnabled', 'false');
-        localStorage.setItem('notificationPermission', permission);
-      }
-    } catch (error) {
-      console.error('Error requesting notification permission:', error);
-      toast.error('Failed to request notification permission');
-    }
-  };
-
-  // Show browser notification
-  const showBrowserNotification = (message: string, activityId?: number) => {
-    if (typeof window === 'undefined') return;
-    if (!('Notification' in window)) {
-      console.log('Browser does not support notifications');
-      return;
-    }
-    
-    // Check permission - if not granted, don't show
-    if (Notification.permission !== 'granted') {
-      console.log('Notification permission not granted:', Notification.permission);
-      return;
-    }
-    
-    // Check if user has enabled browser notifications
-    if (!browserNotificationsEnabled) {
-      console.log('Browser notifications disabled by user');
-      return;
-    }
-
-    try {
-      // Use service worker registration if available (for PWA), otherwise use Notification API
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.ready.then((registration) => {
-          registration.showNotification('CashMate', {
-            body: message,
-            icon: '/logo.png',
-            badge: '/logo.png',
-            tag: activityId?.toString(),
-            requireInteraction: false,
-          });
-        }).catch(() => {
-          // Fallback to Notification API if service worker fails
-          const notification = new Notification('CashMate', {
-            body: message,
-            icon: '/logo.png',
-            badge: '/logo.png',
-            tag: activityId?.toString(),
-          });
-
-          notification.onclick = () => {
-            window.focus();
-            notification.close();
-          };
-        });
-      } else {
-        // Use Notification API directly
-        const notification = new Notification('CashMate', {
-          body: message,
-          icon: '/logo.png',
-          badge: '/logo.png',
-          tag: activityId?.toString(),
-        });
-
-        notification.onclick = () => {
-          window.focus();
-          notification.close();
-        };
-      }
-    } catch (error) {
-      console.error('Error showing browser notification:', error);
     }
   };
 
@@ -1047,36 +949,7 @@ export default function Home() {
         throw error;
       }
 
-      // Get book name and inviter name for email
-      const selectedBook = books.find(b => b.id === selectedBookId);
-      const bookName = selectedBook?.name || 'the book';
-      const inviterName = getCurrentUserName();
-      const inviterEmail = user.email;
-
-      // Send invitation email via Edge Function
-      try {
-        const { data: emailData, error: emailError } = await supabase.functions.invoke('send-member-invitation', {
-          body: {
-            inviteeEmail: email,
-            inviterName: inviterName,
-            inviterEmail: inviterEmail,
-            bookName: bookName,
-            role: role,
-          },
-        });
-
-        if (emailError) {
-          console.error('Error sending invitation email:', emailError);
-          toast.success("Member added successfully!");
-          toast.info(`Invitation email could not be sent to ${email}. Member was still added.`);
-        } else {
-          toast.success(`Member added successfully! Invitation email sent to ${email}.`);
-        }
-      } catch (emailErr: any) {
-        console.error('Error calling invitation email function:', emailErr);
-        toast.success("Member added successfully!");
-        toast.info(`Invitation email could not be sent to ${email}. Member was still added.`);
-      }
+      toast.success("Member added successfully!");
 
       await fetchBookMembers();
       setIsAddMemberModalOpen(false);
@@ -1743,32 +1616,6 @@ export default function Home() {
     }
   }, [user, isProfileOpen]);
 
-  // Initialize notification permission and browser notifications state
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      // Always check the actual browser permission first (most up-to-date)
-      const currentPermission = Notification.permission;
-      setNotificationPermission(currentPermission);
-      
-      try {
-        // Update localStorage with current permission
-        localStorage.setItem('notificationPermission', currentPermission);
-        
-        // Check if user previously enabled notifications and permission is still granted
-        const savedEnabled = localStorage.getItem('browserNotificationsEnabled');
-        if (savedEnabled === 'true' && currentPermission === 'granted') {
-          setBrowserNotificationsEnabled(true);
-        } else if (currentPermission !== 'granted') {
-          // If permission is not granted, disable notifications
-          setBrowserNotificationsEnabled(false);
-          localStorage.setItem('browserNotificationsEnabled', 'false');
-        }
-      } catch (error) {
-        // Ignore localStorage errors (e.g., in incognito mode)
-        console.warn('Error accessing localStorage for notifications:', error);
-      }
-    }
-  }, []);
 
   // Refresh session periodically and on window focus to sync user metadata across tabs/windows
   useEffect(() => {
@@ -1999,14 +1846,6 @@ export default function Home() {
           // Format and show notification
           const notificationMessage = formatActivityNotification(newActivity);
           
-          // Show browser notification (if enabled and permission granted)
-          console.log('🔔 Attempting to show browser notification:', {
-            message: notificationMessage,
-            permission: typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'N/A',
-            enabled: browserNotificationsEnabled
-          });
-          showBrowserNotification(notificationMessage, newActivity.id);
-          
           // Show toast notification with activity icon
           toast.info(notificationMessage, {
             icon: <Activity className="h-4 w-4" />,
@@ -2043,7 +1882,7 @@ export default function Home() {
       console.log('🧹 Cleaning up realtime subscription for book:', selectedBookId);
       supabase.removeChannel(channel);
     };
-  }, [selectedBookId, user?.email, fetchActivities, browserNotificationsEnabled]);
+  }, [selectedBookId, user?.email, fetchActivities]);
 
   // Subscribe to realtime book_members changes to refresh UI when role changes
   useEffect(() => {
@@ -2125,14 +1964,10 @@ export default function Home() {
                 // Refresh books list - this will automatically switch to another book
                 await fetchBooks();
                 
-                // Show browser notification if enabled
-                showBrowserNotification(`Your access to "${removedBookName}" has been removed`);
-                
                 return; // Don't continue with the refresh logic below
               } else {
                 // User was removed from a different book
                 toast.warning(`Your access to "${removedBookName}" has been removed.`);
-                showBrowserNotification(`Your access to "${removedBookName}" has been removed`);
               }
             }
           } else if (payload.eventType === 'INSERT') {
@@ -2180,7 +2015,6 @@ export default function Home() {
               
               // Show toast - fetchBooks already switched to another book
               toast.error(`Your access to "${removedBookName}" has been removed. Switching to another book...`);
-              showBrowserNotification(`Your access to "${removedBookName}" has been removed`);
               
               // fetchBooks already handled switching, so we can return
               return;
@@ -2366,14 +2200,12 @@ export default function Home() {
 
             // Show notifications
             toast.error(`"${deletedBookName}" has been deleted. Switching to another book...`);
-            showBrowserNotification(`"${deletedBookName}" has been deleted`);
 
             // Refresh books list - this will automatically switch to another book
             await fetchBooks();
           } else {
             // A different book was deleted
             toast.warning(`"${deletedBookName}" has been deleted.`);
-            showBrowserNotification(`"${deletedBookName}" has been deleted`);
 
             // Refresh books list to update the list
             await fetchBooks();
@@ -4910,51 +4742,6 @@ export default function Home() {
               </Card>
             </div>
 
-            {/* Notifications Section */}
-            <div>
-              <h2 className="text-xs font-semibold mb-3 px-1">Notifications</h2>
-              <Card className="border border-border">
-                <CardContent className="p-0">
-                  <div className="flex items-center justify-between p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-full bg-gradient-to-r from-primary to-secondary flex items-center justify-center">
-                        <Bell className="h-5 w-5 text-white" strokeWidth={2} />
-                      </div>
-                      <div className="text-left">
-                        <p className="text-xs font-medium">Browser Notifications</p>
-                        <p className="text-xs text-muted-foreground">Receive notifications</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={async () => {
-                        if (browserNotificationsEnabled) {
-                          setBrowserNotificationsEnabled(false);
-                          localStorage.setItem('browserNotificationsEnabled', 'false');
-                          toast.info('Browser notifications disabled');
-                        } else {
-                          await requestNotificationPermission();
-                        }
-                      }}
-                      className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-                        browserNotificationsEnabled && notificationPermission === 'granted'
-                          ? 'bg-primary'
-                          : 'bg-muted'
-                      }`}
-                      disabled={notificationPermission === 'denied'}
-                    >
-                      <span
-                        className={`absolute h-4 w-4 rounded-full bg-white shadow-md transition-all duration-200 ease-in-out ${
-                          browserNotificationsEnabled && notificationPermission === 'granted'
-                            ? 'left-[22px]'
-                            : 'left-[2px]'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
             {/* About Section */}
             <div>
               <h2 className="text-xs font-semibold mb-3 px-1">About</h2>
@@ -6714,51 +6501,138 @@ export default function Home() {
                 >
                   <span className="truncate block">{book.name}</span>
                 </button>
-                {/* Only show menu button for owners */}
-                {bookRoles[book.id] === 'owner' && (
-                  <div className="relative pr-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={`h-8 w-8 ${selectedBookId === book.id ? 'text-primary-foreground hover:bg-white/20' : ''}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setOpenBookMenuId(openBookMenuId === book.id ? null : book.id);
-                      }}
+                {/* Show menu button for all users */}
+                <div className="relative pr-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={`h-8 w-8 ${selectedBookId === book.id ? 'text-primary-foreground hover:bg-white/20' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenBookMenuId(openBookMenuId === book.id ? null : book.id);
+                    }}
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                  {openBookMenuId === book.id && (
+                    <div 
+                      data-book-menu
+                      className="absolute right-2 top-full mt-1 bg-background border border-border rounded-lg shadow-lg z-50 min-w-[120px]"
+                      onClick={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
                     >
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                    {openBookMenuId === book.id && (
-                      <div 
-                        data-book-menu
-                        className="absolute right-2 top-full mt-1 bg-background border border-border rounded-lg shadow-lg z-50 min-w-[120px]"
-                        onClick={(e) => e.stopPropagation()}
-                        onMouseDown={(e) => e.stopPropagation()}
-                      >
+                      {bookRoles[book.id] === 'owner' ? (
+                        <>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenBookMenuId(null);
+                              handleOpenRenameBook(book);
+                            }}
+                            className="w-full text-left px-4 py-2 hover:bg-accent transition-colors flex items-center gap-2 rounded-t-lg text-foreground font-normal"
+                          >
+                            <Pencil className="h-4 w-4" />
+                            Rename
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenBookMenuId(null);
+                              handleOpenDeleteBook(book.id);
+                            }}
+                            className="w-full text-left px-4 py-2 transition-colors flex items-center gap-2 rounded-b-lg font-normal text-red-600 hover:bg-accent"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Delete
+                          </button>
+                        </>
+                      ) : (
                         <button
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation();
-                            handleOpenRenameBook(book);
+                            setOpenBookMenuId(null);
+                            // Leave the book
+                            if (!user?.email) {
+                              toast.error("Please ensure you're logged in");
+                              return;
+                            }
+                            
+                            try {
+                              // Check if the member being removed is an owner
+                              const { data: memberData, error: fetchError } = await supabase
+                                .from('book_members')
+                                .select('role')
+                                .eq('book_id', book.id)
+                                .eq('user_email', user.email)
+                                .single();
+
+                              if (fetchError || !memberData) {
+                                toast.error("Member not found");
+                                return;
+                              }
+
+                              // If removing an owner, check if it's the last owner
+                              if (memberData.role === 'owner') {
+                                const { data: ownersData, error: countError } = await supabase
+                                  .from('book_members')
+                                  .select('user_email')
+                                  .eq('book_id', book.id)
+                                  .eq('role', 'owner');
+
+                                if (countError) {
+                                  console.error('Error counting owners:', countError);
+                                  toast.error("Failed to verify owner count");
+                                  return;
+                                }
+
+                                if (!ownersData || ownersData.length <= 1) {
+                                  toast.error("Cannot remove the last owner. There must be at least one owner.");
+                                  return;
+                                }
+                              }
+
+                              const { error } = await supabase
+                                .from('book_members')
+                                .delete()
+                                .eq('book_id', book.id)
+                                .eq('user_email', user.email);
+
+                              if (error) {
+                                const isPermissionErr = await handlePermissionError(error, 'leave book');
+                                if (!isPermissionErr) {
+                                  console.error('Error leaving book:', error);
+                                  toast.error(error.message || "Failed to leave book");
+                                }
+                                return;
+                              }
+
+                              toast.success("You have left the book successfully!");
+                              
+                              // Log activity
+                              await logActivity('member_removed', `Left the book: ${user.email}`, {
+                                member_email: user.email,
+                                is_self_removal: true
+                              }, book.id);
+                              
+                              // Refresh books list
+                              await fetchBooks();
+                              
+                              // Close book selector if open
+                              setIsBookSelectorOpen(false);
+                            } catch (error: any) {
+                              console.error('Error leaving book:', error);
+                              toast.error(error.message || "Failed to leave book");
+                            }
                           }}
-                          className="w-full text-left px-4 py-2 hover:bg-accent transition-colors flex items-center gap-2 rounded-t-lg text-foreground font-normal"
-                        >
-                          <Pencil className="h-4 w-4" />
-                          Rename
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenDeleteBook(book.id);
-                          }}
-                          className="w-full text-left px-4 py-2 transition-colors flex items-center gap-2 rounded-b-lg font-normal text-red-600 hover:bg-accent"
+                          className="w-full text-left px-4 py-2 transition-colors flex items-center gap-2 rounded-lg font-normal text-red-600 hover:bg-accent"
                         >
                           <Trash2 className="h-4 w-4" />
-                          Delete
+                          Leave
                         </button>
-                      </div>
-                    )}
-                  </div>
-                )}
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
             <div>
@@ -6993,7 +6867,7 @@ export default function Home() {
           </DialogHeader>
           
           <div 
-            className="space-y-4 py-4 px-0"
+            className="space-y-4 py-4"
             onWheel={(e) => {
               e.stopPropagation();
             }}

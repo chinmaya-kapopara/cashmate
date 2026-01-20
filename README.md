@@ -60,14 +60,7 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 2. Go to SQL Editor
 3. Run the SQL script from `supabase-setup.sql` to set up all tables, RLS policies, and functions
 
-### 5. Edge Functions Setup
-
-1. Deploy the `send-member-invitation` Edge Function to Supabase
-2. Set environment variables in Supabase Dashboard:
-   - `APP_URL` - Your production app URL (e.g., `https://cashmate4u.vercel.app`)
-   - `RESEND_API_KEY` (optional) - For sending invitation emails
-
-### 6. Run Development Server
+### 5. Run Development Server
 
 ```bash
 npm run dev
@@ -110,8 +103,6 @@ npm start
 │   ├── cashmate_wallet_logo.png
 │   └── cashmate_wallet_logo_2.png
 ├── supabase/
-│   ├── functions/
-│   │   └── send-member-invitation/  # Edge Function for emails
 │   └── setup.sql               # Database setup script
 ├── next.config.js              # Next.js configuration with PWA
 ├── tailwind.config.ts          # Tailwind CSS configuration
@@ -169,8 +160,6 @@ npm start
 The app is configured for deployment on Vercel. Make sure to:
 
 1. Set all environment variables in Vercel dashboard
-2. Deploy Edge Functions to Supabase
-3. Set `APP_URL` environment variable in Supabase Edge Functions
 
 ## Notes
 

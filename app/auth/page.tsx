@@ -87,6 +87,7 @@ export default function AuthPage() {
         email,
         password,
         options: {
+          emailRedirectTo: `${window.location.origin}/auth?mode=login`,
           data: {
             name: name.trim()
           }
