@@ -141,7 +141,7 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-r from-primary to-secondary p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-r from-primary to-secondary p-4">
       <Card className="w-full max-w-md bg-background/95 backdrop-blur-sm shadow-2xl">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">
@@ -323,7 +323,7 @@ export default function AuthPage() {
           </div>
         </CardContent>
       </Card>
-      <p className="mt-6 text-xs text-center text-white/80">
+      <p className="mt-6 text-xs text-center text-white/80 w-full max-w-md">
         Made with <span className="text-red-400">♥</span> by Chinmaya Kapopara
       </p>
     </div>

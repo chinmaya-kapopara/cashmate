@@ -533,22 +533,64 @@ export default function Home() {
 
   // Show browser notification
   const showBrowserNotification = (message: string, activityId?: number) => {
-    if (!('Notification' in window)) return;
-    if (Notification.permission !== 'granted') return;
-    if (!browserNotificationsEnabled) return;
+    if (typeof window === 'undefined') return;
+    if (!('Notification' in window)) {
+      console.log('Browser does not support notifications');
+      return;
+    }
+    
+    // Check permission - if not granted, don't show
+    if (Notification.permission !== 'granted') {
+      console.log('Notification permission not granted:', Notification.permission);
+      return;
+    }
+    
+    // Check if user has enabled browser notifications
+    if (!browserNotificationsEnabled) {
+      console.log('Browser notifications disabled by user');
+      return;
+    }
 
     try {
-      const notification = new Notification('CashMate', {
-        body: message,
-        icon: '/logo.png',
-        badge: '/logo.png',
-        tag: activityId?.toString(),
-      });
+      // Use service worker registration if available (for PWA), otherwise use Notification API
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then((registration) => {
+          registration.showNotification('CashMate', {
+            body: message,
+            icon: '/logo.png',
+            badge: '/logo.png',
+            tag: activityId?.toString(),
+            requireInteraction: false,
+            vibrate: [200, 100, 200],
+          });
+        }).catch(() => {
+          // Fallback to Notification API if service worker fails
+          const notification = new Notification('CashMate', {
+            body: message,
+            icon: '/logo.png',
+            badge: '/logo.png',
+            tag: activityId?.toString(),
+          });
 
-      notification.onclick = () => {
-        window.focus();
-        notification.close();
-      };
+          notification.onclick = () => {
+            window.focus();
+            notification.close();
+          };
+        });
+      } else {
+        // Use Notification API directly
+        const notification = new Notification('CashMate', {
+          body: message,
+          icon: '/logo.png',
+          badge: '/logo.png',
+          tag: activityId?.toString(),
+        });
+
+        notification.onclick = () => {
+          window.focus();
+          notification.close();
+        };
+      }
     } catch (error) {
       console.error('Error showing browser notification:', error);
     }
@@ -972,12 +1014,17 @@ export default function Home() {
 
     try {
       // Check if user already exists
-      const { data: existing } = await supabase
+      const { data: existing, error: checkError } = await supabase
         .from('book_members')
         .select('user_email')
         .eq('book_id', selectedBookId)
         .eq('user_email', email)
-        .single();
+        .maybeSingle();
+
+      // If there's an error checking (not just "no rows found"), handle it
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw checkError;
+      }
 
       if (existing) {
         toast.error("This user already has access to this book");
@@ -1700,20 +1747,26 @@ export default function Home() {
   // Initialize notification permission and browser notifications state
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
-      setNotificationPermission(Notification.permission);
+      // Always check the actual browser permission first (most up-to-date)
+      const currentPermission = Notification.permission;
+      setNotificationPermission(currentPermission);
       
       try {
-        const savedPermission = localStorage.getItem('notificationPermission') as 'default' | 'granted' | 'denied' | null;
-        if (savedPermission) {
-          setNotificationPermission(savedPermission);
-        }
+        // Update localStorage with current permission
+        localStorage.setItem('notificationPermission', currentPermission);
         
+        // Check if user previously enabled notifications and permission is still granted
         const savedEnabled = localStorage.getItem('browserNotificationsEnabled');
-        if (savedEnabled === 'true' && Notification.permission === 'granted') {
+        if (savedEnabled === 'true' && currentPermission === 'granted') {
           setBrowserNotificationsEnabled(true);
+        } else if (currentPermission !== 'granted') {
+          // If permission is not granted, disable notifications
+          setBrowserNotificationsEnabled(false);
+          localStorage.setItem('browserNotificationsEnabled', 'false');
         }
       } catch (error) {
         // Ignore localStorage errors (e.g., in incognito mode)
+        console.warn('Error accessing localStorage for notifications:', error);
       }
     }
   }, []);
@@ -1912,10 +1965,12 @@ export default function Home() {
   useEffect(() => {
     if (!selectedBookId || !user?.email) return;
 
+    console.log('🔔 Setting up realtime subscription for book:', selectedBookId, 'user:', user.email);
+
     const channel = supabase
       .channel(`activity_log:${selectedBookId}`, {
         config: {
-          broadcast: { self: true },
+          broadcast: { self: false }, // Don't receive own broadcasts to avoid duplicate notifications
         },
       })
       .on(
@@ -1927,18 +1982,33 @@ export default function Home() {
           filter: `book_id=eq.${selectedBookId}`,
         },
         (payload) => {
+          console.log('📬 Activity log change received:', payload);
           const newActivity = (payload as any).new_record;
-          if (!newActivity) return;
+          if (!newActivity) {
+            console.warn('⚠️ No new activity record in payload');
+            return;
+          }
           
           // Don't show notification for current user's own activities
           if (newActivity.user_email === userEmailRef.current) {
+            console.log('⏭️ Skipping notification for own activity:', newActivity.user_email);
             return;
           }
 
+          console.log('✅ Processing notification for activity:', newActivity);
+          
           // Format and show notification
           const notificationMessage = formatActivityNotification(newActivity);
           
-          // Show notification with activity icon
+          // Show browser notification (if enabled and permission granted)
+          console.log('🔔 Attempting to show browser notification:', {
+            message: notificationMessage,
+            permission: typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'N/A',
+            enabled: browserNotificationsEnabled
+          });
+          showBrowserNotification(notificationMessage, newActivity.id);
+          
+          // Show toast notification with activity icon
           toast.info(notificationMessage, {
             icon: <Activity className="h-4 w-4" />,
             duration: 4000,
@@ -1956,23 +2026,25 @@ export default function Home() {
         }
       )
       .subscribe((status, err) => {
+        console.log('📡 Realtime subscription status:', status, err);
         if (status === 'SUBSCRIBED') {
-          console.log('Subscribed to activity log changes for book:', selectedBookId);
+          console.log('✅ Successfully subscribed to activity log changes for book:', selectedBookId);
         } else if (status === 'CHANNEL_ERROR') {
-          console.error('Error subscribing to activity log changes:', err);
+          console.error('❌ Error subscribing to activity log changes:', err);
           // Don't show error to user - realtime is optional
         } else if (status === 'TIMED_OUT') {
-          console.warn('Activity log subscription timed out for book:', selectedBookId);
+          console.warn('⏱️ Activity log subscription timed out for book:', selectedBookId);
         } else if (status === 'CLOSED') {
-          console.log('Activity log subscription closed for book:', selectedBookId);
+          console.log('🔒 Activity log subscription closed for book:', selectedBookId);
         }
       });
 
     // Cleanup subscription when book changes or component unmounts
     return () => {
+      console.log('🧹 Cleaning up realtime subscription for book:', selectedBookId);
       supabase.removeChannel(channel);
     };
-  }, [selectedBookId, user?.email, fetchActivities]);
+  }, [selectedBookId, user?.email, fetchActivities, browserNotificationsEnabled]);
 
   // Subscribe to realtime book_members changes to refresh UI when role changes
   useEffect(() => {
@@ -2036,25 +2108,32 @@ export default function Home() {
               
               if (removedId === currentSelectedId) {
                 // User was removed from the book they're currently viewing
-                console.log('User removed from currently selected book, triggering hard refresh');
-                toast.error(`Your access to "${removedBookName}" has been removed. Refreshing page...`);
+                console.log('User removed from currently selected book, switching to another book');
                 
                 // Clear transactions immediately
                 setTransactions([]);
+                setBookMembers([]);
+                setParties([]);
                 
                 // Clear localStorage to remove the saved book selection
                 if (typeof window !== 'undefined') {
                   localStorage.removeItem('selectedBookId');
                 }
                 
-                // Force a hard refresh after a short delay to show the toast
-                setTimeout(() => {
-                  window.location.reload();
-                }, 2000);
-                return; // Don't continue with the refresh logic, we're doing a hard refresh
+                // Show notification
+                toast.error(`Your access to "${removedBookName}" has been removed. Switching to another book...`);
+                
+                // Refresh books list - this will automatically switch to another book
+                await fetchBooks();
+                
+                // Show browser notification if enabled
+                showBrowserNotification(`Your access to "${removedBookName}" has been removed`);
+                
+                return; // Don't continue with the refresh logic below
               } else {
                 // User was removed from a different book
-                toast.warning(`Your access to "${removedBookName}" has been removed. Refreshing...`);
+                toast.warning(`Your access to "${removedBookName}" has been removed.`);
+                showBrowserNotification(`Your access to "${removedBookName}" has been removed`);
               }
             }
           } else if (payload.eventType === 'INSERT') {
@@ -2079,8 +2158,10 @@ export default function Home() {
             // If user no longer has access to the selected book, fetchBooks should have handled it
             // But double-check and clear transactions if needed
             if (!memberCheck) {
-              console.log('Selected book no longer accessible after refresh, clearing transactions');
+              console.log('Selected book no longer accessible after refresh, switching to another book');
               setTransactions([]);
+              setBookMembers([]);
+              setParties([]);
               
               // Get the book name for the toast
               let removedBookName = 'this book';
@@ -2098,14 +2179,12 @@ export default function Home() {
                 console.error('Error fetching book name:', error);
               }
               
-              // Show toast and trigger hard refresh since user lost access to current book
-              toast.error(`Your access to "${removedBookName}" has been removed. Refreshing page...`);
+              // Show toast - fetchBooks already switched to another book
+              toast.error(`Your access to "${removedBookName}" has been removed. Switching to another book...`);
+              showBrowserNotification(`Your access to "${removedBookName}" has been removed`);
               
-              // Force a hard refresh after a short delay to show the toast
-              setTimeout(() => {
-                window.location.reload();
-              }, 2000);
-              return; // Don't continue with the refresh logic, we're doing a hard refresh
+              // fetchBooks already handled switching, so we can return
+              return;
             }
           }
           
@@ -2228,6 +2307,93 @@ export default function Home() {
           }
         } else if (status === 'CLOSED') {
           console.log('Book members subscription closed for user:', user.email);
+        }
+      });
+
+    // Cleanup subscription when user changes or component unmounts
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.email, fetchBooks]);
+
+  // Subscribe to realtime book deletions to handle when a book is deleted
+  useEffect(() => {
+    if (!user?.email) return;
+    // Only subscribe if there are books - avoids errors when no books exist
+    if (booksLengthRef.current === 0 && !booksLoadingRef.current) return;
+
+    const channel = supabase
+      .channel(`books:deletions:${user.email}`, {
+        config: {
+          broadcast: { self: false },
+        },
+      })
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE', // Listen to book deletions
+          schema: 'public',
+          table: 'books',
+        },
+        async (payload) => {
+          console.log('Book deletion detected:', payload);
+          const deletedBook = (payload as any).old_record;
+          if (!deletedBook) return;
+
+          const deletedBookId = deletedBook.id;
+          const deletedBookName = deletedBook.name || 'a book';
+          const currentSelectedId = selectedBookIdRef.current;
+
+          // Check if the deleted book is the currently selected book
+          const deletedId = typeof deletedBookId === 'number' ? deletedBookId : parseInt(String(deletedBookId), 10);
+          const currentId = typeof currentSelectedId === 'number' ? currentSelectedId : (currentSelectedId ? parseInt(String(currentSelectedId), 10) : null);
+
+          console.log('Book deletion - deletedBookId:', deletedId, 'selectedBookId:', currentId);
+
+          if (deletedId === currentId) {
+            // The currently selected book was deleted
+            console.log('Currently selected book was deleted, switching to another book');
+
+            // Clear all data for the deleted book
+            setTransactions([]);
+            setBookMembers([]);
+            setParties([]);
+            setActivities([]);
+
+            // Clear localStorage
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('selectedBookId');
+            }
+
+            // Show notifications
+            toast.error(`"${deletedBookName}" has been deleted. Switching to another book...`);
+            showBrowserNotification(`"${deletedBookName}" has been deleted`);
+
+            // Refresh books list - this will automatically switch to another book
+            await fetchBooks();
+          } else {
+            // A different book was deleted
+            toast.warning(`"${deletedBookName}" has been deleted.`);
+            showBrowserNotification(`"${deletedBookName}" has been deleted`);
+
+            // Refresh books list to update the list
+            await fetchBooks();
+          }
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Subscribed to book deletions for user:', user.email);
+        } else if (status === 'CHANNEL_ERROR') {
+          if (booksLengthRef.current > 0) {
+            console.error('Error subscribing to book deletions:', err);
+          }
+        } else if (status === 'TIMED_OUT') {
+          if (booksLengthRef.current > 0) {
+            console.warn('Book deletions subscription timed out for user:', user.email);
+          }
+        } else if (status === 'CLOSED') {
+          console.log('Book deletions subscription closed for user:', user.email);
         }
       });
 
@@ -4257,12 +4423,19 @@ export default function Home() {
                       </>
                     );
                   } else {
+                    // Check if user is a viewer (can't add transactions)
+                    const currentUserRole = bookRoles[selectedBookId || 0];
+                    const isViewer = currentUserRole === 'viewer';
+                    
                     return (
                       <>
                         <div className="text-6xl mb-4 opacity-50">➕</div>
                         <h3 className="text-sm font-semibold mb-2">No transactions yet</h3>
                         <p className="text-sm text-muted-foreground">
-                          Tap the ➕ button to add your first transaction
+                          {isViewer 
+                            ? "No transactions found"
+                            : "Tap the button below to add your first transaction"
+                          }
                         </p>
                       </>
                     );
@@ -7036,7 +7209,7 @@ export default function Home() {
                                 const canChangeOwnRole = currentUserRole !== 'viewer';
                                 
                                 return (
-                                  <div className="relative flex-shrink-0">
+                                  <div className="relative flex-shrink-0 z-50">
                                     <Button
                                       type="button"
                                       variant="ghost"
@@ -7058,9 +7231,40 @@ export default function Home() {
                                     {openMemberMenu === member.email && (
                                       <div 
                                         data-member-menu
-                                        className="absolute right-0 top-full mt-1 bg-background border border-border rounded-lg shadow-lg z-50 min-w-[140px] overflow-visible"
+                                        className="fixed bg-background border border-border rounded-lg shadow-lg z-[100] min-w-[140px] whitespace-nowrap"
                                         onClick={(e) => e.stopPropagation()}
                                         onMouseDown={(e) => e.stopPropagation()}
+                                        ref={(el) => {
+                                          if (el && openMemberMenu === member.email) {
+                                            // Use requestAnimationFrame to ensure element is rendered
+                                            requestAnimationFrame(() => {
+                                              const button = el.parentElement?.querySelector('[data-member-menu-button]') as HTMLElement;
+                                              if (button) {
+                                                const buttonRect = button.getBoundingClientRect();
+                                                const menuRect = el.getBoundingClientRect();
+                                                const viewportHeight = window.innerHeight;
+                                                const viewportWidth = window.innerWidth;
+                                                
+                                                // Calculate position
+                                                let top = buttonRect.bottom + 4;
+                                                let right = viewportWidth - buttonRect.right;
+                                                
+                                                // If menu would go off bottom, open upward instead
+                                                if (top + menuRect.height > viewportHeight - 10) {
+                                                  top = buttonRect.top - menuRect.height - 4;
+                                                }
+                                                
+                                                // If menu would go off right, adjust
+                                                if (right + menuRect.width > viewportWidth - 10) {
+                                                  right = viewportWidth - buttonRect.right - menuRect.width;
+                                                }
+                                                
+                                                el.style.top = `${Math.max(10, top)}px`;
+                                                el.style.right = `${Math.max(10, right)}px`;
+                                              }
+                                            });
+                                          }
+                                        }}
                                       >
                                         {canChangeOwnRole && (
                                           <button
@@ -7105,7 +7309,7 @@ export default function Home() {
                                 if (!canManageMembers) return null;
                                 
                                 return (
-                                  <div className="relative flex-shrink-0">
+                                  <div className="relative flex-shrink-0 z-50">
                                     <Button
                                       type="button"
                                       variant="ghost"
@@ -7127,9 +7331,40 @@ export default function Home() {
                                     {openMemberMenu === member.email && (
                                       <div 
                                         data-member-menu
-                                        className="absolute right-0 top-full mt-1 bg-background border border-border rounded-lg shadow-lg z-50 min-w-[140px] overflow-visible"
+                                        className="fixed bg-background border border-border rounded-lg shadow-lg z-[100] min-w-[140px] whitespace-nowrap"
                                         onClick={(e) => e.stopPropagation()}
                                         onMouseDown={(e) => e.stopPropagation()}
+                                        ref={(el) => {
+                                          if (el && openMemberMenu === member.email) {
+                                            // Use requestAnimationFrame to ensure element is rendered
+                                            requestAnimationFrame(() => {
+                                              const button = el.parentElement?.querySelector('[data-member-menu-button]') as HTMLElement;
+                                              if (button) {
+                                                const buttonRect = button.getBoundingClientRect();
+                                                const menuRect = el.getBoundingClientRect();
+                                                const viewportHeight = window.innerHeight;
+                                                const viewportWidth = window.innerWidth;
+                                                
+                                                // Calculate position
+                                                let top = buttonRect.bottom + 4;
+                                                let right = viewportWidth - buttonRect.right;
+                                                
+                                                // If menu would go off bottom, open upward instead
+                                                if (top + menuRect.height > viewportHeight - 10) {
+                                                  top = buttonRect.top - menuRect.height - 4;
+                                                }
+                                                
+                                                // If menu would go off right, adjust
+                                                if (right + menuRect.width > viewportWidth - 10) {
+                                                  right = viewportWidth - buttonRect.right - menuRect.width;
+                                                }
+                                                
+                                                el.style.top = `${Math.max(10, top)}px`;
+                                                el.style.right = `${Math.max(10, right)}px`;
+                                              }
+                                            });
+                                          }
+                                        }}
                                       >
                                         {canEditThisMember && (
                                           <button

@@ -1,48 +1,73 @@
-# Family Expense Manager - PWA
+# CashMate
 
-A Progressive Web App for managing shared family expenses, built with Next.js, React, Tailwind CSS, and shadcn/ui. Optimized for mobile devices.
+A Progressive Web App for managing shared family expenses, built with Next.js, React, Tailwind CSS, and Supabase. Track income and expenses, manage multiple books, collaborate with family members, and view detailed activity logs.
 
 ## Tech Stack
 
-- ✅ **Next.js 14** - React framework with App Router
-- ✅ **React 18** - UI library
+- ✅ **Next.js 16** - React framework with App Router
+- ✅ **React 19** - UI library
 - ✅ **TypeScript** - Type safety
-- ✅ **Tailwind CSS** - Utility-first CSS framework
+- ✅ **Tailwind CSS v4** - Utility-first CSS framework
 - ✅ **shadcn/ui** - Beautiful, accessible component library
 - ✅ **next-pwa** - PWA support with service worker
+- ✅ **Supabase** - Backend as a Service (Authentication, Database, Realtime)
 - ✅ **Radix UI** - Headless UI primitives
 - ✅ **Lucide React** - Icon library
+- ✅ **Sonner** - Toast notifications
 
 ## Features
 
-- 📱 Mobile-first responsive design
-- 🎨 Modern, clean UI with shadcn/ui components
-- ⚡ Progressive Web App (PWA) support
-- 💰 Expense tracking interface
-- 👥 Multi-member expense splitting
-- 📊 Summary cards and filters
-- 🎯 Category-based expense organization
-- ♿ Fully accessible components
-- 🎭 Smooth animations and transitions
+- 📱 **Mobile-first PWA** - Install as an app on your device
+- 🔐 **Authentication** - Secure user authentication with Supabase
+- 📚 **Multiple Books** - Organize transactions into separate books
+- 👥 **Role-Based Access** - Owner, Admin, Editor, and Viewer roles
+- 💰 **Income & Expense Tracking** - Track all financial transactions
+- 🏷️ **Party Management** - Organize transactions by parties
+- 📊 **Real-time Updates** - See changes instantly across all devices
+- 🔍 **Advanced Filtering** - Filter by date, type, member, and party
+- 📈 **Activity Log** - Track all changes and activities
+- 🔔 **Notifications** - Browser and in-app notifications for activities
+- 📅 **Date Management** - Flexible date filtering with dd-mm-yyyy format
+- 🔄 **Transaction History** - View complete history of transaction changes
+- 🎨 **Modern UI** - Clean, intuitive interface with light grey backgrounds
 
 ## Setup Instructions
 
-### 1. Install Dependencies
+### 1. Prerequisites
+
+- Node.js 18+ installed
+- A Supabase project (free tier works)
+
+### 2. Install Dependencies
 
 ```bash
 npm install
 ```
 
-### 2. Icon Files (Optional)
+### 3. Environment Variables
 
-Icon files are optional - the app works perfectly without them! When you're ready, you can add:
+Create a `.env.local` file in the root directory:
 
-- `public/icon-192.png` - 192x192 pixels
-- `public/icon-512.png` - 512x512 pixels
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=your_publishable_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+```
 
-Place them in the `public` directory. The manifest already references them.
+### 4. Database Setup
 
-### 3. Run Development Server
+1. Open your Supabase project dashboard
+2. Go to SQL Editor
+3. Run the SQL script from `supabase-setup.sql` to set up all tables, RLS policies, and functions
+
+### 5. Edge Functions Setup
+
+1. Deploy the `send-member-invitation` Edge Function to Supabase
+2. Set environment variables in Supabase Dashboard:
+   - `APP_URL` - Your production app URL (e.g., `https://cashmate4u.vercel.app`)
+   - `RESEND_API_KEY` (optional) - For sending invitation emails
+
+### 6. Run Development Server
 
 ```bash
 npm run dev
@@ -50,66 +75,80 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### 4. Build for Production
+### 7. Build for Production
 
 ```bash
 npm run build
 npm start
 ```
 
-### 5. Testing on Mobile
-
-1. Make sure your computer and mobile device are on the same network
-2. Find your computer's local IP address:
-   - Windows: `ipconfig` (look for IPv4 Address)
-   - Mac/Linux: `ifconfig` or `ip addr`
-3. Start the dev server and access it from your mobile browser using: `http://YOUR_IP:3000`
-4. On mobile, you can "Add to Home Screen" to install as a PWA
-
 ## Project Structure
 
 ```
 .
 ├── app/
-│   ├── globals.css          # Global styles with Tailwind
-│   ├── layout.tsx            # Root layout
-│   ├── manifest.ts           # PWA manifest
-│   └── page.tsx              # Main page component
+│   ├── auth/
+│   │   └── page.tsx           # Authentication page
+│   ├── globals.css            # Global styles with Tailwind v4
+│   ├── layout.tsx              # Root layout with metadata
+│   ├── manifest.ts             # PWA manifest
+│   └── page.tsx                # Main application page
 ├── components/
-│   └── ui/                   # shadcn/ui components
+│   ├── landing-page.tsx        # Landing page component
+│   └── ui/                     # shadcn/ui components
 │       ├── button.tsx
 │       ├── card.tsx
 │       ├── dialog.tsx
 │       ├── input.tsx
 │       ├── label.tsx
 │       ├── select.tsx
-│       └── checkbox.tsx
+│       └── sonner.tsx
 ├── lib/
-│   └── utils.ts              # Utility functions
-├── public/                   # Static assets
-│   ├── icon-192.png          # App icon (optional)
-│   └── icon-512.png          # App icon (optional)
-├── next.config.js            # Next.js configuration with PWA
-├── tailwind.config.ts        # Tailwind CSS configuration
-├── tsconfig.json             # TypeScript configuration
-├── components.json           # shadcn/ui configuration
-└── package.json              # Dependencies
+│   ├── supabase.ts             # Supabase client
+│   └── utils.ts                # Utility functions
+├── public/                     # Static assets
+│   ├── cashmate_wallet_logo.png
+│   └── cashmate_wallet_logo_2.png
+├── supabase/
+│   ├── functions/
+│   │   └── send-member-invitation/  # Edge Function for emails
+│   └── setup.sql               # Database setup script
+├── next.config.js              # Next.js configuration with PWA
+├── tailwind.config.ts          # Tailwind CSS configuration
+├── tsconfig.json               # TypeScript configuration
+└── package.json                # Dependencies
 ```
 
-## Current Status
+## Key Features Explained
 
-✅ **UI Complete** - All interface elements are in place with shadcn/ui
-⏳ **Functionality** - Not yet implemented (as requested)
+### Role-Based Access Control
 
-## UI Components
+- **Owner**: Full control - can add/remove members, edit roles, manage books
+- **Admin**: Can add/remove members, edit transactions, manage parties
+- **Editor**: Can add/edit/delete transactions, manage parties
+- **Viewer**: Read-only access - can view transactions and history
 
-- **Header**: App title and menu button with gradient background
-- **Summary Cards**: Total spent, you paid, you owe with gradient styling
-- **Filter Tabs**: All, Today, This Week, This Month
-- **Expense List**: Empty state (ready for expenses)
-- **Add Expense Dialog**: Full form with categories, split options using shadcn/ui Dialog
-- **Side Menu**: Navigation menu with smooth animations
-- **FAB**: Floating action button for quick expense addition
+### Books
+
+- Create multiple books to organize different expense categories
+- Each book has its own transactions, parties, and members
+- Switch between books easily
+- Books are private to their members
+
+### Transactions
+
+- Add income and expense transactions
+- Set amount, description, party, and date
+- View running balance for each transaction
+- Edit and delete transactions (based on role)
+- View complete transaction history
+
+### Activity Log
+
+- Track all activities: transactions, member changes, party changes, book changes
+- Real-time updates when activities occur
+- Filter by activity type
+- Browser notifications support
 
 ## Available Scripts
 
@@ -125,16 +164,13 @@ npm start
 - Safari (iOS 11.3+)
 - Samsung Internet
 
-## Next Steps
+## Deployment
 
-When ready to add functionality:
-1. Set up state management (Zustand, Redux, or Context API)
-2. Implement data storage (IndexedDB or localStorage)
-3. Add expense CRUD operations
-4. Implement expense splitting calculations
-5. Add family member management
-6. Create reports and analytics
-7. Add data persistence and sync
+The app is configured for deployment on Vercel. Make sure to:
+
+1. Set all environment variables in Vercel dashboard
+2. Deploy Edge Functions to Supabase
+3. Set `APP_URL` environment variable in Supabase Edge Functions
 
 ## Notes
 
@@ -144,3 +180,5 @@ When ready to add functionality:
 - Service worker is automatically generated in production builds
 - All interactions are touch-optimized for mobile
 - Components follow accessibility best practices
+- Dates are displayed and input in dd-mm-yyyy format
+- Real-time subscriptions keep data synchronized across devices
