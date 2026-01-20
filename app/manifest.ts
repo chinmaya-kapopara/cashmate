@@ -12,25 +12,25 @@ export default function manifest(): MetadataRoute.Manifest {
     orientation: "portrait-primary",
     icons: [
       {
-        src: "/cashmate_wallet_logo_2.png",
+        src: "/app_logo.png",
         sizes: "192x192",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/cashmate_wallet_logo_2.png",
+        src: "/app_logo.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/cashmate_wallet_logo_2.png",
+        src: "/app_logo.png",
         sizes: "192x192",
         type: "image/png",
         purpose: "maskable",
       },
       {
-        src: "/cashmate_wallet_logo_2.png",
+        src: "/app_logo.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",

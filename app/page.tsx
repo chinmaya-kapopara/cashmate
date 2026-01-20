@@ -540,8 +540,8 @@ export default function Home() {
     try {
       const notification = new Notification('CashMate', {
         body: message,
-        icon: '/cashmate_wallet_logo.png',
-        badge: '/cashmate_wallet_logo.png',
+        icon: '/logo.png',
+        badge: '/logo.png',
         tag: activityId?.toString(),
       });
 
@@ -4309,12 +4309,12 @@ export default function Home() {
                               );
                             })()}
                             <div className="flex-1 min-w-0 overflow-hidden">
-                              <p className="text-sm font-semibold truncate">{transaction.name}</p>
+                              <p className="text-sm truncate">{transaction.name}</p>
                               <p className="text-xs text-muted-foreground truncate">{transaction.addedBy}</p>
                             </div>
                           </div>
                            <div className="text-right">
-                             <div className={`text-sm font-bold ${transaction.type === "income" ? "text-green-600" : "text-red-600"}`}>
+                             <div className={`text-sm ${transaction.type === "income" ? "text-green-600" : "text-red-600"}`}>
                                {transaction.type === "income" ? "+" : "-"} ₹{formatIndianNumber(transaction.amount)}
                              </div>
                             <div className="text-xs text-muted-foreground mt-1">
@@ -5077,53 +5077,79 @@ export default function Home() {
             {pendingDateFilter === "singleDay" && (
               <div className="flex flex-col gap-2">
                 <Label htmlFor="singleDate" className="text-xs font-medium">Select Date</Label>
-                <Input
-                  id="singleDate"
-                  type="text"
-                  placeholder="dd-mm-yyyy"
-                  value={singleDate ? formatDateToDDMMYYYY(singleDate) : formatDateToDDMMYYYY(getISTDateString())}
-                  onChange={(e) => {
-                    let value = e.target.value;
-                    // Remove non-digit and non-dash characters
-                    value = value.replace(/[^\d-]/g, "");
-                    // Auto-format as user types: dd-mm-yyyy
-                    if (value.length <= 2) {
-                      // Just day
-                      value = value;
-                    } else if (value.length <= 5) {
-                      // Day and month
-                      value = value.slice(0, 2) + "-" + value.slice(2);
-                    } else {
-                      // Day, month, and year
-                      value = value.slice(0, 2) + "-" + value.slice(2, 4) + "-" + value.slice(4, 8);
-                    }
-                    // Convert to YYYY-MM-DD for storage
-                    const isoDate = parseDDMMYYYYToISO(value);
-                    if (isoDate) {
-                      setSingleDate(isoDate);
-                    } else if (value.length === 0) {
-                      setSingleDate(getISTDateString());
-                    }
-                  }}
-                  onBlur={(e) => {
-                    // Validate and ensure proper format on blur
-                    const value = e.target.value;
-                    if (value) {
+                <div className="relative">
+                  <Input
+                    id="singleDate"
+                    type="text"
+                    placeholder="dd-mm-yyyy"
+                    value={singleDate ? formatDateToDDMMYYYY(singleDate) : formatDateToDDMMYYYY(getISTDateString())}
+                    onChange={(e) => {
+                      let value = e.target.value;
+                      // Remove non-digit and non-dash characters
+                      value = value.replace(/[^\d-]/g, "");
+                      // Auto-format as user types: dd-mm-yyyy
+                      if (value.length <= 2) {
+                        // Just day
+                        value = value;
+                      } else if (value.length <= 5) {
+                        // Day and month
+                        value = value.slice(0, 2) + "-" + value.slice(2);
+                      } else {
+                        // Day, month, and year
+                        value = value.slice(0, 2) + "-" + value.slice(2, 4) + "-" + value.slice(4, 8);
+                      }
+                      // Convert to YYYY-MM-DD for storage
                       const isoDate = parseDDMMYYYYToISO(value);
                       if (isoDate) {
                         setSingleDate(isoDate);
-                      } else {
-                        // Invalid date, reset to today
+                      } else if (value.length === 0) {
                         setSingleDate(getISTDateString());
-                        toast.error("Invalid date format. Please use dd-mm-yyyy");
                       }
-                    } else {
-                      setSingleDate(getISTDateString());
-                    }
-                  }}
-                  className={!singleDate ? "text-muted-foreground" : "text-foreground"}
-                  maxLength={10}
-                />
+                    }}
+                    onBlur={(e) => {
+                      // Validate and ensure proper format on blur
+                      const value = e.target.value;
+                      if (value) {
+                        const isoDate = parseDDMMYYYYToISO(value);
+                        if (isoDate) {
+                          setSingleDate(isoDate);
+                        } else {
+                          // Invalid date, reset to today
+                          setSingleDate(getISTDateString());
+                          toast.error("Invalid date format. Please use dd-mm-yyyy");
+                        }
+                      } else {
+                        setSingleDate(getISTDateString());
+                      }
+                    }}
+                    className={`${!singleDate ? "text-muted-foreground" : "text-foreground"} pr-10`}
+                    maxLength={10}
+                  />
+                  <input
+                    type="date"
+                    id="single-date-picker-hidden"
+                    value={singleDate || getISTDateString()}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setSingleDate(e.target.value);
+                      }
+                    }}
+                    className="absolute opacity-0 pointer-events-none w-0 h-0"
+                    max={getISTDate().toISOString().split("T")[0]}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const hiddenInput = document.getElementById('single-date-picker-hidden') as HTMLInputElement;
+                      if (hiddenInput && 'showPicker' in hiddenInput) {
+                        hiddenInput.showPicker();
+                      }
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <Calendar className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             )}
 
@@ -5131,104 +5157,157 @@ export default function Home() {
               <div className="space-y-4">
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="dateRangeStart" className="text-xs font-medium">From Date</Label>
-                  <Input
-                    id="dateRangeStart"
-                    type="text"
-                    placeholder="dd-mm-yyyy"
-                    value={dateRangeStart ? formatDateToDDMMYYYY(dateRangeStart) : formatDateToDDMMYYYY(getISTDateString())}
-                    onChange={(e) => {
-                      let value = e.target.value;
-                      // Remove non-digit and non-dash characters
-                      value = value.replace(/[^\d-]/g, "");
-                      // Auto-format as user types: dd-mm-yyyy
-                      if (value.length <= 2) {
-                        // Just day
-                        value = value;
-                      } else if (value.length <= 5) {
-                        // Day and month
-                        value = value.slice(0, 2) + "-" + value.slice(2);
-                      } else {
-                        // Day, month, and year
-                        value = value.slice(0, 2) + "-" + value.slice(2, 4) + "-" + value.slice(4, 8);
-                      }
-                      // Convert to YYYY-MM-DD for storage
-                      const isoDate = parseDDMMYYYYToISO(value);
-                      if (isoDate) {
-                        setDateRangeStart(isoDate);
-                      } else if (value.length === 0) {
-                        setDateRangeStart(getISTDateString());
-                      }
-                    }}
-                    onBlur={(e) => {
-                      // Validate and ensure proper format on blur
-                      const value = e.target.value;
-                      if (value) {
+                  <div className="relative">
+                    <Input
+                      id="dateRangeStart"
+                      type="text"
+                      placeholder="dd-mm-yyyy"
+                      value={dateRangeStart ? formatDateToDDMMYYYY(dateRangeStart) : formatDateToDDMMYYYY(getISTDateString())}
+                      onChange={(e) => {
+                        let value = e.target.value;
+                        // Remove non-digit and non-dash characters
+                        value = value.replace(/[^\d-]/g, "");
+                        // Auto-format as user types: dd-mm-yyyy
+                        if (value.length <= 2) {
+                          // Just day
+                          value = value;
+                        } else if (value.length <= 5) {
+                          // Day and month
+                          value = value.slice(0, 2) + "-" + value.slice(2);
+                        } else {
+                          // Day, month, and year
+                          value = value.slice(0, 2) + "-" + value.slice(2, 4) + "-" + value.slice(4, 8);
+                        }
+                        // Convert to YYYY-MM-DD for storage
                         const isoDate = parseDDMMYYYYToISO(value);
                         if (isoDate) {
                           setDateRangeStart(isoDate);
-                        } else {
-                          // Invalid date, reset to today
+                        } else if (value.length === 0) {
                           setDateRangeStart(getISTDateString());
-                          toast.error("Invalid date format. Please use dd-mm-yyyy");
                         }
-                      } else {
-                        setDateRangeStart(getISTDateString());
-                      }
-                    }}
-                    className={!dateRangeStart ? "text-muted-foreground" : "text-foreground"}
-                    maxLength={10}
-                  />
+                      }}
+                      onBlur={(e) => {
+                        // Validate and ensure proper format on blur
+                        const value = e.target.value;
+                        if (value) {
+                          const isoDate = parseDDMMYYYYToISO(value);
+                          if (isoDate) {
+                            setDateRangeStart(isoDate);
+                          } else {
+                            // Invalid date, reset to today
+                            setDateRangeStart(getISTDateString());
+                            toast.error("Invalid date format. Please use dd-mm-yyyy");
+                          }
+                        } else {
+                          setDateRangeStart(getISTDateString());
+                        }
+                      }}
+                      className={`${!dateRangeStart ? "text-muted-foreground" : "text-foreground"} pr-10`}
+                      maxLength={10}
+                    />
+                    <input
+                      type="date"
+                      id="date-range-start-picker-hidden"
+                      value={dateRangeStart || getISTDateString()}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setDateRangeStart(e.target.value);
+                        }
+                      }}
+                      className="absolute opacity-0 pointer-events-none w-0 h-0"
+                      max={dateRangeEnd || getISTDate().toISOString().split("T")[0]}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const hiddenInput = document.getElementById('date-range-start-picker-hidden') as HTMLInputElement;
+                        if (hiddenInput && 'showPicker' in hiddenInput) {
+                          hiddenInput.showPicker();
+                        }
+                      }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      <Calendar className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="dateRangeEnd" className="text-xs font-medium">To Date</Label>
-                  <Input
-                    id="dateRangeEnd"
-                    type="text"
-                    placeholder="dd-mm-yyyy"
-                    value={dateRangeEnd ? formatDateToDDMMYYYY(dateRangeEnd) : formatDateToDDMMYYYY(getISTDateString())}
-                    onChange={(e) => {
-                      let value = e.target.value;
-                      // Remove non-digit and non-dash characters
-                      value = value.replace(/[^\d-]/g, "");
-                      // Auto-format as user types: dd-mm-yyyy
-                      if (value.length <= 2) {
-                        // Just day
-                        value = value;
-                      } else if (value.length <= 5) {
-                        // Day and month
-                        value = value.slice(0, 2) + "-" + value.slice(2);
-                      } else {
-                        // Day, month, and year
-                        value = value.slice(0, 2) + "-" + value.slice(2, 4) + "-" + value.slice(4, 8);
-                      }
-                      // Convert to YYYY-MM-DD for storage
-                      const isoDate = parseDDMMYYYYToISO(value);
-                      if (isoDate) {
-                        setDateRangeEnd(isoDate);
-                      } else if (value.length === 0) {
-                        setDateRangeEnd(getISTDateString());
-                      }
-                    }}
-                    onBlur={(e) => {
-                      // Validate and ensure proper format on blur
-                      const value = e.target.value;
-                      if (value) {
+                  <div className="relative">
+                    <Input
+                      id="dateRangeEnd"
+                      type="text"
+                      placeholder="dd-mm-yyyy"
+                      value={dateRangeEnd ? formatDateToDDMMYYYY(dateRangeEnd) : formatDateToDDMMYYYY(getISTDateString())}
+                      onChange={(e) => {
+                        let value = e.target.value;
+                        // Remove non-digit and non-dash characters
+                        value = value.replace(/[^\d-]/g, "");
+                        // Auto-format as user types: dd-mm-yyyy
+                        if (value.length <= 2) {
+                          // Just day
+                          value = value;
+                        } else if (value.length <= 5) {
+                          // Day and month
+                          value = value.slice(0, 2) + "-" + value.slice(2);
+                        } else {
+                          // Day, month, and year
+                          value = value.slice(0, 2) + "-" + value.slice(2, 4) + "-" + value.slice(4, 8);
+                        }
+                        // Convert to YYYY-MM-DD for storage
                         const isoDate = parseDDMMYYYYToISO(value);
                         if (isoDate) {
                           setDateRangeEnd(isoDate);
-                        } else {
-                          // Invalid date, reset to today
+                        } else if (value.length === 0) {
                           setDateRangeEnd(getISTDateString());
-                          toast.error("Invalid date format. Please use dd-mm-yyyy");
                         }
-                      } else {
-                        setDateRangeEnd(getISTDateString());
-                      }
-                    }}
-                    className={dateRangeStart ? "!text-foreground" : (!dateRangeEnd ? "text-muted-foreground" : "text-foreground")}
-                    style={dateRangeStart ? { color: 'hsl(var(--foreground))' } : undefined}
-                    maxLength={10}
-                  />
+                      }}
+                      onBlur={(e) => {
+                        // Validate and ensure proper format on blur
+                        const value = e.target.value;
+                        if (value) {
+                          const isoDate = parseDDMMYYYYToISO(value);
+                          if (isoDate) {
+                            setDateRangeEnd(isoDate);
+                          } else {
+                            // Invalid date, reset to today
+                            setDateRangeEnd(getISTDateString());
+                            toast.error("Invalid date format. Please use dd-mm-yyyy");
+                          }
+                        } else {
+                          setDateRangeEnd(getISTDateString());
+                        }
+                      }}
+                      className={`${dateRangeStart ? "!text-foreground" : (!dateRangeEnd ? "text-muted-foreground" : "text-foreground")} pr-10`}
+                      style={dateRangeStart ? { color: 'hsl(var(--foreground))' } : undefined}
+                      maxLength={10}
+                    />
+                    <input
+                      type="date"
+                      id="date-range-end-picker-hidden"
+                      value={dateRangeEnd || getISTDateString()}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setDateRangeEnd(e.target.value);
+                        }
+                      }}
+                      className="absolute opacity-0 pointer-events-none w-0 h-0"
+                      min={dateRangeStart || undefined}
+                      max={getISTDate().toISOString().split("T")[0]}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const hiddenInput = document.getElementById('date-range-end-picker-hidden') as HTMLInputElement;
+                        if (hiddenInput && 'showPicker' in hiddenInput) {
+                          hiddenInput.showPicker();
+                        }
+                      }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      <Calendar className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -5927,9 +6006,33 @@ export default function Home() {
                       setFormData({ ...formData, date: getISTDateString() });
                     }
                   }}
-                  className="w-full"
+                  className="w-full pr-10"
                   maxLength={10}
                 />
+                <input
+                  type="date"
+                  id="date-picker-hidden"
+                  value={formData.date || getISTDateString()}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setFormData({ ...formData, date: e.target.value });
+                    }
+                  }}
+                  className="absolute opacity-0 pointer-events-none w-0 h-0"
+                  max={getISTDate().toISOString().split("T")[0]}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const hiddenInput = document.getElementById('date-picker-hidden') as HTMLInputElement;
+                    if (hiddenInput && 'showPicker' in hiddenInput) {
+                      hiddenInput.showPicker();
+                    }
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <Calendar className="h-4 w-4" />
+                </button>
               </div>
             </div>
           </div>
@@ -6188,11 +6291,38 @@ export default function Home() {
                             setFormData({ ...formData, date: getISTDateString() });
                           }
                         }}
-                        className="w-full"
+                        className="w-full pr-10"
                         maxLength={10}
                         disabled={isViewer}
                         readOnly={isViewer}
                       />
+                      <input
+                        type="date"
+                        id="edit-date-picker-hidden"
+                        value={formData.date || getISTDateString()}
+                        onChange={(e) => {
+                          if (!isViewer && e.target.value) {
+                            setFormData({ ...formData, date: e.target.value });
+                          }
+                        }}
+                        className="absolute opacity-0 pointer-events-none w-0 h-0"
+                        max={getISTDate().toISOString().split("T")[0]}
+                        disabled={isViewer}
+                      />
+                      {!isViewer && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const hiddenInput = document.getElementById('edit-date-picker-hidden') as HTMLInputElement;
+                            if (hiddenInput && 'showPicker' in hiddenInput) {
+                              hiddenInput.showPicker();
+                            }
+                          }}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          <Calendar className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </>

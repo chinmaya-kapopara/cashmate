@@ -33,7 +33,7 @@ export default function LandingPage({ onComplete }: LandingPageProps) {
         {/* Logo */}
         <div className="relative w-32 h-32 sm:w-40 sm:h-40 md:w-48 md:h-48 flex items-center justify-center">
           <Image
-            src="/cashmate_wallet_logo.png"
+            src="/logo.png"
             alt="CashMate Logo"
             width={192}
             height={192}
@@ -52,6 +52,11 @@ export default function LandingPage({ onComplete }: LandingPageProps) {
           </p>
         </div>
       </div>
+      
+      {/* Attribution */}
+      <p className="absolute bottom-8 text-xs text-center text-muted-foreground/70">
+        Made with <span className="text-red-400">♥</span> by Chinmaya Kapopara
+      </p>
 
       <style jsx>{`
         @keyframes fade-in {

@@ -11,11 +11,11 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
   icons: {
     icon: [
-      { url: "/cashmate_wallet_logo.png", sizes: "192x192", type: "image/png" },
-      { url: "/cashmate_wallet_logo.png", sizes: "512x512", type: "image/png" },
+      { url: "/logo.png", sizes: "192x192", type: "image/png" },
+      { url: "/logo.png", sizes: "512x512", type: "image/png" },
     ],
     apple: [
-      { url: "/cashmate_wallet_logo.png", sizes: "180x180", type: "image/png" },
+      { url: "/logo.png", sizes: "180x180", type: "image/png" },
     ],
   },
   appleWebApp: {

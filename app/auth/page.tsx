@@ -323,6 +323,9 @@ export default function AuthPage() {
           </div>
         </CardContent>
       </Card>
+      <p className="mt-6 text-xs text-center text-white/80">
+        Made with <span className="text-red-400">♥</span> by Chinmaya Kapopara
+      </p>
     </div>
   );
 }
