@@ -300,7 +300,7 @@ export default function Home() {
 
   const [loading, setLoading] = useState(true);
   const [booksLoading, setBooksLoading] = useState(true);
-  const [transactionType, setTransactionType] = useState<"income" | "expense">("expense");
+  const [transactionType, setTransactionType] = useState<"income" | "expense">("income");
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFilter, setDateFilter] = useState("allTime");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -658,6 +658,7 @@ export default function Home() {
   useEffect(() => {
     if (isDialogOpen && !isEditDialogOpen) {
       // Only reset if add dialog is opening (not edit dialog)
+      // Don't reset transactionType here - let the button clicks set it
       setFormData({
         amount: "",
         description: "",
@@ -665,7 +666,6 @@ export default function Home() {
         party: "",
         date: getISTDateString(),
       });
-      setTransactionType("expense");
       setIsAmountEditing(false);
     }
   }, [isDialogOpen, isEditDialogOpen]);
@@ -5869,6 +5869,7 @@ export default function Home() {
         setIsDialogOpen(open);
         if (open) {
           // Reset form when opening add dialog
+          // Don't reset transactionType - let the button clicks set it (income or expense)
           setFormData({
             amount: "",
             description: "",
@@ -5876,7 +5877,6 @@ export default function Home() {
             party: "",
             date: getISTDateString(),
           });
-          setTransactionType("expense");
         } else {
           // Reset form when closing dialog without saving
           setFormData({
@@ -5886,7 +5886,8 @@ export default function Home() {
             party: "",
             date: getISTDateString(),
           });
-          setTransactionType("expense");
+          // Reset to income as default for next time
+          setTransactionType("income");
           setIsAmountEditing(false);
         }
       }}>
