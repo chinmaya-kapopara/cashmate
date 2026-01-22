@@ -4081,7 +4081,7 @@ export default function Home() {
           </div>
 
           {/* Filter Section */}
-          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide py-1 px-0.5">
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide py-1.5 px-0.5">
             {(() => {
               // Define filter buttons with their configurations
               const filterButtons = [
@@ -4093,9 +4093,8 @@ export default function Home() {
                     <div key="date" className="relative flex-shrink-0 z-10">
                       <Button
                         variant="outline"
-                        size="sm"
                         onClick={() => setIsDateFilterOpen(true)}
-                        className={`h-7 whitespace-nowrap justify-start shadow-[0_1px_3px_0_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)] relative px-2 ${dateFilter !== "allTime" ? "pr-6" : ""} ${
+                        className={`whitespace-nowrap justify-start shadow-[0_1px_3px_0_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)] relative ${dateFilter !== "allTime" ? "pr-8" : ""} ${
                           dateFilter !== "allTime"
                             ? "border-primary text-primary bg-transparent"
                             : ""
@@ -4137,9 +4136,8 @@ export default function Home() {
                     <div key="type" className="relative flex-shrink-0 z-10">
                       <Button
                         variant="outline"
-                        size="sm"
                         onClick={() => setIsTypeFilterOpen(true)}
-                        className={`h-7 whitespace-nowrap justify-start shadow-sm relative px-2 ${typeFilter !== "all" ? "pr-6" : ""} ${
+                        className={`whitespace-nowrap justify-start shadow-sm relative ${typeFilter !== "all" ? "pr-8" : ""} ${
                           typeFilter !== "all"
                             ? "border-primary text-primary bg-transparent"
                             : ""
@@ -4174,9 +4172,8 @@ export default function Home() {
                     <div key="member" className="relative flex-shrink-0 z-10">
                       <Button
                         variant="outline"
-                        size="sm"
                         onClick={() => setIsMemberFilterOpen(true)}
-                        className={`h-7 whitespace-nowrap justify-start shadow-sm relative px-2 ${memberFilter !== "all" ? "pr-6" : ""} ${
+                        className={`whitespace-nowrap justify-start shadow-sm relative ${memberFilter !== "all" ? "pr-8" : ""} ${
                           memberFilter !== "all"
                             ? "border-primary text-primary bg-transparent"
                             : ""
@@ -4209,9 +4206,8 @@ export default function Home() {
                     <div key="party" className="relative flex-shrink-0 z-10">
                       <Button
                         variant="outline"
-                        size="sm"
                         onClick={() => setIsPartyFilterOpen(true)}
-                        className={`h-7 whitespace-nowrap justify-start shadow-sm relative px-2 ${partyFilter !== "all" ? "pr-6" : ""} ${
+                        className={`whitespace-nowrap justify-start shadow-sm relative ${partyFilter !== "all" ? "pr-8" : ""} ${
                           partyFilter !== "all"
                             ? "border-primary text-primary bg-transparent"
                             : ""
