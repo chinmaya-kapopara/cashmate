@@ -654,6 +654,22 @@ export default function Home() {
   });
   const [newBookName, setNewBookName] = useState("");
 
+  // Reset form data when add dialog opens
+  useEffect(() => {
+    if (isDialogOpen && !isEditDialogOpen) {
+      // Only reset if add dialog is opening (not edit dialog)
+      setFormData({
+        amount: "",
+        description: "",
+        addedBy: getCurrentUserName(),
+        party: "",
+        date: getISTDateString(),
+      });
+      setTransactionType("expense");
+      setIsAmountEditing(false);
+    }
+  }, [isDialogOpen, isEditDialogOpen]);
+
   // Fetch books from Supabase - only books the user has access to
   const fetchBooks = useCallback(async () => {
     if (!user?.email) {
@@ -5085,9 +5101,13 @@ export default function Home() {
                     placeholder="dd-mm-yyyy"
                     value={singleDate ? formatDateToDDMMYYYY(singleDate) : formatDateToDDMMYYYY(getISTDateString())}
                     onClick={() => {
-                      const hiddenInput = document.getElementById('single-date-picker-hidden') as HTMLInputElement;
-                      if (hiddenInput && 'showPicker' in hiddenInput) {
-                        hiddenInput.showPicker();
+                      const hiddenInput = document.getElementById('single-date-picker-hidden') as HTMLInputElement | null;
+                      if (hiddenInput) {
+                        if ('showPicker' in hiddenInput && typeof hiddenInput.showPicker === 'function') {
+                          hiddenInput.showPicker();
+                        } else {
+                          hiddenInput.click();
+                        }
                       }
                     }}
                     onChange={(e) => {
@@ -5141,18 +5161,24 @@ export default function Home() {
                         setSingleDate(e.target.value);
                       }
                     }}
-                    className="absolute opacity-0 pointer-events-none w-0 h-0"
+                    className="absolute inset-0 opacity-0 pointer-events-auto w-full h-full cursor-pointer"
                     max={getISTDate().toISOString().split("T")[0]}
+                    style={{ zIndex: 10 }}
                   />
                   <button
                     type="button"
-                    onClick={() => {
-                      const hiddenInput = document.getElementById('single-date-picker-hidden') as HTMLInputElement;
-                      if (hiddenInput && 'showPicker' in hiddenInput) {
-                        hiddenInput.showPicker();
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const hiddenInput = document.getElementById('single-date-picker-hidden') as HTMLInputElement | null;
+                      if (hiddenInput) {
+                        if ('showPicker' in hiddenInput && typeof hiddenInput.showPicker === 'function') {
+                          hiddenInput.showPicker();
+                        } else {
+                          hiddenInput.click();
+                        }
                       }
                     }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground z-20"
                   >
                     <Calendar className="h-4 w-4" />
                   </button>
@@ -5171,9 +5197,13 @@ export default function Home() {
                       placeholder="dd-mm-yyyy"
                       value={dateRangeStart ? formatDateToDDMMYYYY(dateRangeStart) : formatDateToDDMMYYYY(getISTDateString())}
                       onClick={() => {
-                        const hiddenInput = document.getElementById('date-range-start-picker-hidden') as HTMLInputElement;
-                        if (hiddenInput && 'showPicker' in hiddenInput) {
-                          hiddenInput.showPicker();
+                        const hiddenInput = document.getElementById('date-range-start-picker-hidden') as HTMLInputElement | null;
+                        if (hiddenInput) {
+                          if ('showPicker' in hiddenInput && typeof hiddenInput.showPicker === 'function') {
+                            hiddenInput.showPicker();
+                          } else {
+                            hiddenInput.click();
+                          }
                         }
                       }}
                       onChange={(e) => {
@@ -5227,18 +5257,24 @@ export default function Home() {
                           setDateRangeStart(e.target.value);
                         }
                       }}
-                      className="absolute opacity-0 pointer-events-none w-0 h-0"
+                      className="absolute inset-0 opacity-0 pointer-events-auto w-full h-full cursor-pointer"
                       max={dateRangeEnd || getISTDate().toISOString().split("T")[0]}
+                      style={{ zIndex: 10 }}
                     />
                     <button
                       type="button"
-                      onClick={() => {
-                        const hiddenInput = document.getElementById('date-range-start-picker-hidden') as HTMLInputElement;
-                        if (hiddenInput && 'showPicker' in hiddenInput) {
-                          hiddenInput.showPicker();
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const hiddenInput = document.getElementById('date-range-start-picker-hidden') as HTMLInputElement | null;
+                        if (hiddenInput) {
+                          if ('showPicker' in hiddenInput && typeof hiddenInput.showPicker === 'function') {
+                            hiddenInput.showPicker();
+                          } else {
+                            hiddenInput.click();
+                          }
                         }
                       }}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground z-20"
                     >
                       <Calendar className="h-4 w-4" />
                     </button>
@@ -5253,9 +5289,13 @@ export default function Home() {
                       placeholder="dd-mm-yyyy"
                       value={dateRangeEnd ? formatDateToDDMMYYYY(dateRangeEnd) : formatDateToDDMMYYYY(getISTDateString())}
                       onClick={() => {
-                        const hiddenInput = document.getElementById('date-range-end-picker-hidden') as HTMLInputElement;
-                        if (hiddenInput && 'showPicker' in hiddenInput) {
-                          hiddenInput.showPicker();
+                        const hiddenInput = document.getElementById('date-range-end-picker-hidden') as HTMLInputElement | null;
+                        if (hiddenInput) {
+                          if ('showPicker' in hiddenInput && typeof hiddenInput.showPicker === 'function') {
+                            hiddenInput.showPicker();
+                          } else {
+                            hiddenInput.click();
+                          }
                         }
                       }}
                       onChange={(e) => {
@@ -5310,19 +5350,25 @@ export default function Home() {
                           setDateRangeEnd(e.target.value);
                         }
                       }}
-                      className="absolute opacity-0 pointer-events-none w-0 h-0"
+                      className="absolute inset-0 opacity-0 pointer-events-auto w-full h-full cursor-pointer"
                       min={dateRangeStart || undefined}
                       max={getISTDate().toISOString().split("T")[0]}
+                      style={{ zIndex: 10 }}
                     />
                     <button
                       type="button"
-                      onClick={() => {
-                        const hiddenInput = document.getElementById('date-range-end-picker-hidden') as HTMLInputElement;
-                        if (hiddenInput && 'showPicker' in hiddenInput) {
-                          hiddenInput.showPicker();
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const hiddenInput = document.getElementById('date-range-end-picker-hidden') as HTMLInputElement | null;
+                        if (hiddenInput) {
+                          if ('showPicker' in hiddenInput && typeof hiddenInput.showPicker === 'function') {
+                            hiddenInput.showPicker();
+                          } else {
+                            hiddenInput.click();
+                          }
                         }
                       }}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground z-20"
                     >
                       <Calendar className="h-4 w-4" />
                     </button>
@@ -5987,9 +6033,13 @@ export default function Home() {
                   placeholder="dd-mm-yyyy"
                   value={formData.date ? formatDateToDDMMYYYY(formData.date) : ""}
                   onClick={() => {
-                    const hiddenInput = document.getElementById('date-picker-hidden') as HTMLInputElement;
-                    if (hiddenInput && 'showPicker' in hiddenInput) {
-                      hiddenInput.showPicker();
+                    const hiddenInput = document.getElementById('date-picker-hidden') as HTMLInputElement | null;
+                    if (hiddenInput) {
+                      if ('showPicker' in hiddenInput && typeof hiddenInput.showPicker === 'function') {
+                        hiddenInput.showPicker();
+                      } else {
+                        hiddenInput.click();
+                      }
                     }
                   }}
                   onChange={(e) => {
@@ -6043,18 +6093,24 @@ export default function Home() {
                       setFormData({ ...formData, date: e.target.value });
                     }
                   }}
-                  className="absolute opacity-0 pointer-events-none w-0 h-0"
+                  className="absolute inset-0 opacity-0 pointer-events-auto w-full h-full cursor-pointer"
                   max={getISTDate().toISOString().split("T")[0]}
+                  style={{ zIndex: 10 }}
                 />
                 <button
                   type="button"
-                  onClick={() => {
-                    const hiddenInput = document.getElementById('date-picker-hidden') as HTMLInputElement;
-                    if (hiddenInput && 'showPicker' in hiddenInput) {
-                      hiddenInput.showPicker();
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const hiddenInput = document.getElementById('date-picker-hidden') as HTMLInputElement | null;
+                    if (hiddenInput) {
+                      if ('showPicker' in hiddenInput && typeof hiddenInput.showPicker === 'function') {
+                        hiddenInput.showPicker();
+                      } else {
+                        hiddenInput.click();
+                      }
                     }
                   }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground z-20"
                 >
                   <Calendar className="h-4 w-4" />
                 </button>
@@ -6090,11 +6146,12 @@ export default function Home() {
           setFormData({
             amount: "",
             description: "",
-            addedBy: "",
+            addedBy: getCurrentUserName(),
             party: "",
             date: getISTDateString(),
           });
           setTransactionType("expense");
+          setIsAmountEditing(false);
         }
       }}>
         <DialogContent 
@@ -6288,9 +6345,13 @@ export default function Home() {
                         value={formData.date ? formatDateToDDMMYYYY(formData.date) : ""}
                         onClick={() => {
                           if (isViewer) return;
-                          const hiddenInput = document.getElementById('edit-date-picker-hidden') as HTMLInputElement;
-                          if (hiddenInput && 'showPicker' in hiddenInput) {
-                            hiddenInput.showPicker();
+                          const hiddenInput = document.getElementById('edit-date-picker-hidden') as HTMLInputElement | null;
+                          if (hiddenInput) {
+                            if ('showPicker' in hiddenInput && typeof hiddenInput.showPicker === 'function') {
+                              hiddenInput.showPicker();
+                            } else {
+                              hiddenInput.click();
+                            }
                           }
                         }}
                         onChange={(e) => {
@@ -6349,20 +6410,26 @@ export default function Home() {
                             setFormData({ ...formData, date: e.target.value });
                           }
                         }}
-                        className="absolute opacity-0 pointer-events-none w-0 h-0"
+                        className="absolute inset-0 opacity-0 pointer-events-auto w-full h-full cursor-pointer"
                         max={getISTDate().toISOString().split("T")[0]}
                         disabled={isViewer}
+                        style={{ zIndex: 10 }}
                       />
                       {!isViewer && (
                         <button
                           type="button"
-                          onClick={() => {
-                            const hiddenInput = document.getElementById('edit-date-picker-hidden') as HTMLInputElement;
-                            if (hiddenInput && 'showPicker' in hiddenInput) {
-                              hiddenInput.showPicker();
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const hiddenInput = document.getElementById('edit-date-picker-hidden') as HTMLInputElement | null;
+                            if (hiddenInput) {
+                              if ('showPicker' in hiddenInput && typeof hiddenInput.showPicker === 'function') {
+                                hiddenInput.showPicker();
+                              } else {
+                                hiddenInput.click();
+                              }
                             }
                           }}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground z-20"
                         >
                           <Calendar className="h-4 w-4" />
                         </button>
