@@ -149,6 +149,7 @@ export default function Home() {
   const [selectedRole, setSelectedRole] = useState<"owner" | "admin" | "editor" | "viewer">("viewer");
   const [isLastOwner, setIsLastOwner] = useState(false);
   const [openMemberMenu, setOpenMemberMenu] = useState<string | null>(null);
+  const memberMenuJustOpenedRef = useRef<boolean>(false);
   const [bookMembers, setBookMembers] = useState<Array<{email: string; role: string; name?: string}>>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [newMemberEmail, setNewMemberEmail] = useState("");
@@ -696,7 +697,11 @@ export default function Home() {
         console.error('Error fetching books:', error);
         setBooks([]);
         setBookRoles({});
-      } else if (data) {
+        setBooksLoading(false);
+        return;
+      }
+      
+      if (data) {
         setBooks(data);
         
         // Fetch user's role for each book
@@ -764,6 +769,7 @@ export default function Home() {
     } catch (error) {
       console.error('Error fetching books:', error);
       setBooks([]);
+      setBookRoles({});
     } finally {
       setBooksLoading(false);
     }
@@ -3767,7 +3773,13 @@ export default function Home() {
     }
     if (openMemberMenu === null) return;
 
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      // Prevent closing if menu was just opened
+      if (memberMenuJustOpenedRef.current) {
+        memberMenuJustOpenedRef.current = false;
+        return;
+      }
+      
       const target = event.target as HTMLElement;
       // Check if click is inside the menu dropdown
       const menuElement = target.closest('[data-member-menu]');
@@ -3780,14 +3792,20 @@ export default function Home() {
       }
     };
 
+    // Use a longer delay to ensure menu is positioned before attaching listener
     let timeoutId: NodeJS.Timeout;
     timeoutId = setTimeout(() => {
+      // Add both mousedown and click listeners for better desktop support
       document.addEventListener('mousedown', handleClickOutside);
-    }, 100);
+      document.addEventListener('click', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }, 150);
 
     return () => {
       clearTimeout(timeoutId);
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
     };
   }, [openMemberMenu, isMembersModalOpen]);
 
@@ -3830,23 +3848,23 @@ export default function Home() {
           <div className="flex items-center justify-between py-2">
             {/* Book Selector - Left side with medium width */}
             <div className="w-48 flex-shrink-0">
-              {books.length > 0 && (
-                <>
-                  {booksLoading ? (
-                    <div className="flex items-center gap-2 px-0 py-2">
-                      <div className="h-5 w-24 bg-muted animate-pulse rounded"></div>
-                      <div className="h-4 w-4 bg-muted animate-pulse rounded"></div>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={handleOpenBookSelector}
-                      className="flex items-center gap-1.5 px-0 py-2 hover:opacity-70 transition-opacity"
-                    >
-                      <span className="font-semibold text-sm truncate">{selectedBook?.name || "Select a book"}</span>
-                      <ChevronDown className="h-5 w-5 flex-shrink-0" />
-                    </button>
-                  )}
-                </>
+              {booksLoading ? (
+                <div className="flex items-center gap-2 px-0 py-2">
+                  <div className="h-5 w-24 bg-muted animate-pulse rounded"></div>
+                  <div className="h-4 w-4 bg-muted animate-pulse rounded"></div>
+                </div>
+              ) : books.length > 0 ? (
+                <button
+                  onClick={handleOpenBookSelector}
+                  className="flex items-center gap-1.5 px-0 py-2 hover:opacity-70 transition-opacity"
+                >
+                  <span className="font-semibold text-sm truncate">{selectedBook?.name || "Select a book"}</span>
+                  <ChevronDown className="h-5 w-5 flex-shrink-0" />
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5 px-0 py-2">
+                  <span className="font-semibold text-sm text-muted-foreground">No books</span>
+                </div>
               )}
             </div>
 
@@ -4313,15 +4331,15 @@ export default function Home() {
                               );
                             })()}
                             <div className="flex-1 min-w-0 overflow-hidden">
-                              <p className="text-sm truncate">{transaction.name}</p>
-                              <p className="text-xs text-muted-foreground truncate">{transaction.addedBy}</p>
+                              <p className="text-xs truncate">{transaction.name}</p>
+                              <p className="text-[10px] text-muted-foreground truncate">{transaction.addedBy}</p>
                             </div>
                           </div>
                            <div className="text-right">
-                             <div className={`text-sm ${transaction.type === "income" ? "text-green-600" : "text-red-600"}`}>
+                             <div className={`text-xs ${transaction.type === "income" ? "text-green-600" : "text-red-600"}`}>
                                {transaction.type === "income" ? "+" : "-"} ₹{formatIndianNumber(transaction.amount)}
                              </div>
-                            <div className="text-xs text-muted-foreground mt-1">
+                            <div className="text-[10px] text-muted-foreground mt-1">
                               ₹{formatIndianNumber(balanceMap.get(transaction.id) || 0)}
                             </div>
                           </div>
@@ -5042,6 +5060,12 @@ export default function Home() {
                     type="text"
                     placeholder="dd-mm-yyyy"
                     value={singleDate ? formatDateToDDMMYYYY(singleDate) : formatDateToDDMMYYYY(getISTDateString())}
+                    onClick={() => {
+                      const hiddenInput = document.getElementById('single-date-picker-hidden') as HTMLInputElement;
+                      if (hiddenInput && 'showPicker' in hiddenInput) {
+                        hiddenInput.showPicker();
+                      }
+                    }}
                     onChange={(e) => {
                       let value = e.target.value;
                       // Remove non-digit and non-dash characters
@@ -5081,7 +5105,7 @@ export default function Home() {
                         setSingleDate(getISTDateString());
                       }
                     }}
-                    className={`${!singleDate ? "text-muted-foreground" : "text-foreground"} pr-10`}
+                    className={`${!singleDate ? "text-muted-foreground" : "text-foreground"} pr-10 cursor-pointer`}
                     maxLength={10}
                   />
                   <input
@@ -5122,6 +5146,12 @@ export default function Home() {
                       type="text"
                       placeholder="dd-mm-yyyy"
                       value={dateRangeStart ? formatDateToDDMMYYYY(dateRangeStart) : formatDateToDDMMYYYY(getISTDateString())}
+                      onClick={() => {
+                        const hiddenInput = document.getElementById('date-range-start-picker-hidden') as HTMLInputElement;
+                        if (hiddenInput && 'showPicker' in hiddenInput) {
+                          hiddenInput.showPicker();
+                        }
+                      }}
                       onChange={(e) => {
                         let value = e.target.value;
                         // Remove non-digit and non-dash characters
@@ -5161,7 +5191,7 @@ export default function Home() {
                           setDateRangeStart(getISTDateString());
                         }
                       }}
-                      className={`${!dateRangeStart ? "text-muted-foreground" : "text-foreground"} pr-10`}
+                      className={`${!dateRangeStart ? "text-muted-foreground" : "text-foreground"} pr-10 cursor-pointer`}
                       maxLength={10}
                     />
                     <input
@@ -5198,6 +5228,12 @@ export default function Home() {
                       type="text"
                       placeholder="dd-mm-yyyy"
                       value={dateRangeEnd ? formatDateToDDMMYYYY(dateRangeEnd) : formatDateToDDMMYYYY(getISTDateString())}
+                      onClick={() => {
+                        const hiddenInput = document.getElementById('date-range-end-picker-hidden') as HTMLInputElement;
+                        if (hiddenInput && 'showPicker' in hiddenInput) {
+                          hiddenInput.showPicker();
+                        }
+                      }}
                       onChange={(e) => {
                         let value = e.target.value;
                         // Remove non-digit and non-dash characters
@@ -5237,7 +5273,7 @@ export default function Home() {
                           setDateRangeEnd(getISTDateString());
                         }
                       }}
-                      className={`${dateRangeStart ? "!text-foreground" : (!dateRangeEnd ? "text-muted-foreground" : "text-foreground")} pr-10`}
+                      className={`${dateRangeStart ? "!text-foreground" : (!dateRangeEnd ? "text-muted-foreground" : "text-foreground")} pr-10 cursor-pointer`}
                       style={dateRangeStart ? { color: 'hsl(var(--foreground))' } : undefined}
                       maxLength={10}
                     />
@@ -5926,6 +5962,12 @@ export default function Home() {
                   type="text"
                   placeholder="dd-mm-yyyy"
                   value={formData.date ? formatDateToDDMMYYYY(formData.date) : ""}
+                  onClick={() => {
+                    const hiddenInput = document.getElementById('date-picker-hidden') as HTMLInputElement;
+                    if (hiddenInput && 'showPicker' in hiddenInput) {
+                      hiddenInput.showPicker();
+                    }
+                  }}
                   onChange={(e) => {
                     let value = e.target.value;
                     // Remove non-digit and non-dash characters
@@ -5965,7 +6007,7 @@ export default function Home() {
                       setFormData({ ...formData, date: getISTDateString() });
                     }
                   }}
-                  className="w-full pr-10"
+                  className="w-full pr-10 cursor-pointer"
                   maxLength={10}
                 />
                 <input
@@ -6208,6 +6250,13 @@ export default function Home() {
                         type="text"
                         placeholder="dd-mm-yyyy"
                         value={formData.date ? formatDateToDDMMYYYY(formData.date) : ""}
+                        onClick={() => {
+                          if (isViewer) return;
+                          const hiddenInput = document.getElementById('edit-date-picker-hidden') as HTMLInputElement;
+                          if (hiddenInput && 'showPicker' in hiddenInput) {
+                            hiddenInput.showPicker();
+                          }
+                        }}
                         onChange={(e) => {
                           if (isViewer) return;
                           let value = e.target.value;
@@ -6250,7 +6299,7 @@ export default function Home() {
                             setFormData({ ...formData, date: getISTDateString() });
                           }
                         }}
-                        className="w-full pr-10"
+                        className="w-full pr-10 cursor-pointer"
                         maxLength={10}
                         disabled={isViewer}
                         readOnly={isViewer}
@@ -7089,12 +7138,26 @@ export default function Home() {
                                       size="icon"
                                       className="h-8 w-8"
                                       data-member-menu-button
+                                      data-member-email={member.email}
                                       onClick={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
-                                        setOpenMemberMenu(openMemberMenu === member.email ? null : member.email);
+                                        const newValue = openMemberMenu === member.email ? null : member.email;
+                                        if (newValue !== null) {
+                                          // Mark that menu was just opened
+                                          memberMenuJustOpenedRef.current = true;
+                                          // Reset flag after a short delay
+                                          setTimeout(() => {
+                                            memberMenuJustOpenedRef.current = false;
+                                          }, 200);
+                                        }
+                                        setOpenMemberMenu(newValue);
                                       }}
                                       onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                      }}
+                                      onTouchStart={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
                                       }}
@@ -7111,29 +7174,34 @@ export default function Home() {
                                           if (el && openMemberMenu === member.email) {
                                             // Use requestAnimationFrame to ensure element is rendered
                                             requestAnimationFrame(() => {
-                                              const button = el.parentElement?.querySelector('[data-member-menu-button]') as HTMLElement;
+                                              const button = document.querySelector(`[data-member-menu-button][data-member-email="${member.email}"]`) as HTMLElement;
                                               if (button) {
                                                 const buttonRect = button.getBoundingClientRect();
                                                 const menuRect = el.getBoundingClientRect();
                                                 const viewportHeight = window.innerHeight;
                                                 const viewportWidth = window.innerWidth;
                                                 
-                                                // Calculate position
+                                                // Calculate position - align to bottom-right of button
                                                 let top = buttonRect.bottom + 4;
-                                                let right = viewportWidth - buttonRect.right;
+                                                let left = buttonRect.right - menuRect.width;
                                                 
                                                 // If menu would go off bottom, open upward instead
                                                 if (top + menuRect.height > viewportHeight - 10) {
                                                   top = buttonRect.top - menuRect.height - 4;
                                                 }
                                                 
-                                                // If menu would go off right, adjust
-                                                if (right + menuRect.width > viewportWidth - 10) {
-                                                  right = viewportWidth - buttonRect.right - menuRect.width;
+                                                // If menu would go off left, align to left edge of button
+                                                if (left < 10) {
+                                                  left = buttonRect.left;
+                                                }
+                                                
+                                                // If menu would go off right, align to right edge
+                                                if (left + menuRect.width > viewportWidth - 10) {
+                                                  left = viewportWidth - menuRect.width - 10;
                                                 }
                                                 
                                                 el.style.top = `${Math.max(10, top)}px`;
-                                                el.style.right = `${Math.max(10, right)}px`;
+                                                el.style.left = `${Math.max(10, left)}px`;
                                               }
                                             });
                                           }
@@ -7189,12 +7257,26 @@ export default function Home() {
                                       size="icon"
                                       className="h-8 w-8"
                                       data-member-menu-button
+                                      data-member-email={member.email}
                                       onClick={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
-                                        setOpenMemberMenu(openMemberMenu === member.email ? null : member.email);
+                                        const newValue = openMemberMenu === member.email ? null : member.email;
+                                        if (newValue !== null) {
+                                          // Mark that menu was just opened
+                                          memberMenuJustOpenedRef.current = true;
+                                          // Reset flag after a short delay
+                                          setTimeout(() => {
+                                            memberMenuJustOpenedRef.current = false;
+                                          }, 200);
+                                        }
+                                        setOpenMemberMenu(newValue);
                                       }}
                                       onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                      }}
+                                      onTouchStart={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
                                       }}
@@ -7211,29 +7293,34 @@ export default function Home() {
                                           if (el && openMemberMenu === member.email) {
                                             // Use requestAnimationFrame to ensure element is rendered
                                             requestAnimationFrame(() => {
-                                              const button = el.parentElement?.querySelector('[data-member-menu-button]') as HTMLElement;
+                                              const button = document.querySelector(`[data-member-menu-button][data-member-email="${member.email}"]`) as HTMLElement;
                                               if (button) {
                                                 const buttonRect = button.getBoundingClientRect();
                                                 const menuRect = el.getBoundingClientRect();
                                                 const viewportHeight = window.innerHeight;
                                                 const viewportWidth = window.innerWidth;
                                                 
-                                                // Calculate position
+                                                // Calculate position - align to bottom-right of button
                                                 let top = buttonRect.bottom + 4;
-                                                let right = viewportWidth - buttonRect.right;
+                                                let left = buttonRect.right - menuRect.width;
                                                 
                                                 // If menu would go off bottom, open upward instead
                                                 if (top + menuRect.height > viewportHeight - 10) {
                                                   top = buttonRect.top - menuRect.height - 4;
                                                 }
                                                 
-                                                // If menu would go off right, adjust
-                                                if (right + menuRect.width > viewportWidth - 10) {
-                                                  right = viewportWidth - buttonRect.right - menuRect.width;
+                                                // If menu would go off left, align to left edge of button
+                                                if (left < 10) {
+                                                  left = buttonRect.left;
+                                                }
+                                                
+                                                // If menu would go off right, align to right edge
+                                                if (left + menuRect.width > viewportWidth - 10) {
+                                                  left = viewportWidth - menuRect.width - 10;
                                                 }
                                                 
                                                 el.style.top = `${Math.max(10, top)}px`;
-                                                el.style.right = `${Math.max(10, right)}px`;
+                                                el.style.left = `${Math.max(10, left)}px`;
                                               }
                                             });
                                           }

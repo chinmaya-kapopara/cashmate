@@ -83,11 +83,13 @@ export default function AuthPage() {
 
     setLoading(true);
     try {
+      // Use production URL from environment variable, fallback to current origin
+      const productionUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth?mode=login`,
+          emailRedirectTo: `${productionUrl}/auth?mode=login`,
           data: {
             name: name.trim()
           }
