@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Filter, ArrowDown, ArrowUp, ArrowDownCircle, ArrowUpCircle, Home as HomeIcon, BarChart3, Wallet, User, Users, Search, Calendar, ChevronDown, History, Trash2, MoreVertical, Pencil, Settings as SettingsIcon, Shield, HelpCircle, Info, ArrowLeft, Mail, X, CalendarDays, LogOut, Activity, Lock, Eye, EyeOff } from "lucide-react";
+import { Plus, Filter, ArrowDown, ArrowUp, ArrowDownCircle, ArrowUpCircle, Home as HomeIcon, BarChart3, Wallet, User, Users, Search, Calendar, ChevronDown, History, Trash2, MoreVertical, Pencil, Settings as SettingsIcon, Shield, HelpCircle, Info, ArrowLeft, Mail, X, CalendarDays, LogOut, Activity, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
 import LandingPage from "@/components/landing-page";
 
 // Categories removed - using initials/avatars instead
@@ -250,6 +250,8 @@ export default function Home() {
   }, []);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isAddingTransaction, setIsAddingTransaction] = useState(false);
+  const isSubmittingTransactionRef = useRef(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [originalTransactionValues, setOriginalTransactionValues] = useState<{
@@ -2965,11 +2967,21 @@ export default function Home() {
   };
 
   const handleAddTransaction = async () => {
+    // Prevent multiple simultaneous submissions
+    if (isSubmittingTransactionRef.current) {
+      return;
+    }
+
     if (!formData.amount || !formData.description) {
       toast.error("Please fill in all fields");
       return;
     }
 
+    // Set submitting flag
+    isSubmittingTransactionRef.current = true;
+    setIsAddingTransaction(true);
+
+    try {
     // Auto-populate addedBy from current user's name
     const currentUserAddedBy = getCurrentUserName();
 
@@ -3034,6 +3046,8 @@ export default function Home() {
       // Check if it's a permission error first
       const isPermissionErr = await handlePermissionError(error, 'add transactions');
       if (isPermissionErr) {
+        isSubmittingTransactionRef.current = false;
+        setIsAddingTransaction(false);
         return;
       }
       
@@ -3057,6 +3071,8 @@ export default function Home() {
       }
       
       toast.error(errorMessage);
+      isSubmittingTransactionRef.current = false;
+      setIsAddingTransaction(false);
       return;
     }
 
@@ -3103,6 +3119,14 @@ export default function Home() {
       amount: amount,
       type: transactionType
     });
+    } catch (error) {
+    // Error is already handled above, just ensure we reset the flag
+    console.error('Error in handleAddTransaction:', error);
+  } finally {
+    // Reset submitting flag
+    isSubmittingTransactionRef.current = false;
+    setIsAddingTransaction(false);
+  }
   };
 
   // Create a new book - any authenticated user can create books
@@ -4057,7 +4081,7 @@ export default function Home() {
           </div>
 
           {/* Filter Section */}
-          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide py-1.5 px-0.5">
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide py-1 px-0.5">
             {(() => {
               // Define filter buttons with their configurations
               const filterButtons = [
@@ -4069,15 +4093,16 @@ export default function Home() {
                     <div key="date" className="relative flex-shrink-0 z-10">
                       <Button
                         variant="outline"
+                        size="sm"
                         onClick={() => setIsDateFilterOpen(true)}
-                        className={`whitespace-nowrap justify-start shadow-[0_1px_3px_0_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)] relative ${dateFilter !== "allTime" ? "pr-8" : ""} ${
+                        className={`h-7 whitespace-nowrap justify-start shadow-[0_1px_3px_0_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)] relative px-2 ${dateFilter !== "allTime" ? "pr-6" : ""} ${
                           dateFilter !== "allTime"
                             ? "border-primary text-primary bg-transparent"
                             : ""
                         }`}
                       >
-                        <CalendarDays className={`h-4 w-4 mr-2 ${dateFilter !== "allTime" ? "text-primary" : ""}`} />
-                        <span className={dateFilter !== "allTime" ? "text-primary" : ""}>
+                        <CalendarDays className={`h-3 w-3 mr-1.5 ${dateFilter !== "allTime" ? "text-primary" : ""}`} />
+                        <span className={`text-xs ${dateFilter !== "allTime" ? "text-primary" : ""}`}>
                           {dateFilter === "allTime" ? "All Time" :
                            dateFilter === "today" ? "Today" :
                            dateFilter === "yesterday" ? "Yesterday" :
@@ -4096,9 +4121,9 @@ export default function Home() {
                             setDateRangeStart("");
                             setDateRangeEnd("");
                           }}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 flex items-center justify-center rounded-full hover:bg-black/10 dark:hover:bg-white/10"
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 h-4 w-4 flex items-center justify-center rounded-full hover:bg-black/10 dark:hover:bg-white/10"
                         >
-                          <X className="h-3.5 w-3.5 text-primary" />
+                          <X className="h-3 w-3 text-primary" />
                         </button>
                       )}
                     </div>
@@ -4112,15 +4137,16 @@ export default function Home() {
                     <div key="type" className="relative flex-shrink-0 z-10">
                       <Button
                         variant="outline"
+                        size="sm"
                         onClick={() => setIsTypeFilterOpen(true)}
-                        className={`whitespace-nowrap justify-start shadow-sm relative ${typeFilter !== "all" ? "pr-8" : ""} ${
+                        className={`h-7 whitespace-nowrap justify-start shadow-sm relative px-2 ${typeFilter !== "all" ? "pr-6" : ""} ${
                           typeFilter !== "all"
                             ? "border-primary text-primary bg-transparent"
                             : ""
                         }`}
                       >
-                        <Filter className={`h-4 w-4 mr-2 ${typeFilter !== "all" ? "text-primary" : ""}`} />
-                        <span className={typeFilter !== "all" ? "text-primary" : ""}>
+                        <Filter className={`h-3 w-3 mr-1.5 ${typeFilter !== "all" ? "text-primary" : ""}`} />
+                        <span className={`text-xs ${typeFilter !== "all" ? "text-primary" : ""}`}>
                           {typeFilter === "all" ? "All Type" :
                            typeFilter === "income" ? "Income" :
                            typeFilter === "expense" ? "Expense" : "Type"}
@@ -4132,9 +4158,9 @@ export default function Home() {
                             e.stopPropagation();
                             setTypeFilter("all");
                           }}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 flex items-center justify-center rounded-full hover:bg-black/10 dark:hover:bg-white/10"
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 h-4 w-4 flex items-center justify-center rounded-full hover:bg-black/10 dark:hover:bg-white/10"
                         >
-                          <X className="h-3.5 w-3.5 text-primary" />
+                          <X className="h-3 w-3 text-primary" />
                         </button>
                       )}
                     </div>
@@ -4148,15 +4174,16 @@ export default function Home() {
                     <div key="member" className="relative flex-shrink-0 z-10">
                       <Button
                         variant="outline"
+                        size="sm"
                         onClick={() => setIsMemberFilterOpen(true)}
-                        className={`whitespace-nowrap justify-start shadow-sm relative ${memberFilter !== "all" ? "pr-8" : ""} ${
+                        className={`h-7 whitespace-nowrap justify-start shadow-sm relative px-2 ${memberFilter !== "all" ? "pr-6" : ""} ${
                           memberFilter !== "all"
                             ? "border-primary text-primary bg-transparent"
                             : ""
                         }`}
                       >
-                        <Users className={`h-4 w-4 mr-2 ${memberFilter !== "all" ? "text-primary" : ""}`} />
-                        <span className={memberFilter !== "all" ? "text-primary" : ""}>
+                        <Users className={`h-3 w-3 mr-1.5 ${memberFilter !== "all" ? "text-primary" : ""}`} />
+                        <span className={`text-xs ${memberFilter !== "all" ? "text-primary" : ""}`}>
                           {memberFilter === "all" ? "All Members" : memberFilter}
                         </span>
                       </Button>
@@ -4166,9 +4193,9 @@ export default function Home() {
                             e.stopPropagation();
                             setMemberFilter("all");
                           }}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 flex items-center justify-center rounded-full hover:bg-black/10 dark:hover:bg-white/10"
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 h-4 w-4 flex items-center justify-center rounded-full hover:bg-black/10 dark:hover:bg-white/10"
                         >
-                          <X className="h-3.5 w-3.5 text-primary" />
+                          <X className="h-3 w-3 text-primary" />
                         </button>
                       )}
                     </div>
@@ -4182,15 +4209,16 @@ export default function Home() {
                     <div key="party" className="relative flex-shrink-0 z-10">
                       <Button
                         variant="outline"
+                        size="sm"
                         onClick={() => setIsPartyFilterOpen(true)}
-                        className={`whitespace-nowrap justify-start shadow-sm relative ${partyFilter !== "all" ? "pr-8" : ""} ${
+                        className={`h-7 whitespace-nowrap justify-start shadow-sm relative px-2 ${partyFilter !== "all" ? "pr-6" : ""} ${
                           partyFilter !== "all"
                             ? "border-primary text-primary bg-transparent"
                             : ""
                         }`}
                       >
-                        <User className={`h-4 w-4 mr-2 ${partyFilter !== "all" ? "text-primary" : ""}`} />
-                        <span className={partyFilter !== "all" ? "text-primary" : ""}>
+                        <User className={`h-3 w-3 mr-1.5 ${partyFilter !== "all" ? "text-primary" : ""}`} />
+                        <span className={`text-xs ${partyFilter !== "all" ? "text-primary" : ""}`}>
                           {partyFilter === "all" ? "All Parties" : partyFilter}
                         </span>
                       </Button>
@@ -4200,9 +4228,9 @@ export default function Home() {
                             e.stopPropagation();
                             setPartyFilter("all");
                           }}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 flex items-center justify-center rounded-full hover:bg-black/10 dark:hover:bg-white/10"
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 h-4 w-4 flex items-center justify-center rounded-full hover:bg-black/10 dark:hover:bg-white/10"
                         >
-                          <X className="h-3.5 w-3.5 text-primary" />
+                          <X className="h-3 w-3 text-primary" />
                         </button>
                       )}
                     </div>
@@ -6039,7 +6067,19 @@ export default function Home() {
           </div>
 
           <DialogFooter>
-            <Button onClick={handleAddTransaction}>Save</Button>
+            <Button 
+              onClick={handleAddTransaction}
+              disabled={isAddingTransaction}
+            >
+              {isAddingTransaction ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save'
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
